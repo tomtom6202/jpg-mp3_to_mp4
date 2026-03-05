@@ -26,13 +26,21 @@ jobs:
 
       - name: Initialize Flutter Project
         run: |
-          flutter create .
+          # 加上 --project-name 強制命名，解決資料夾名稱有橫線的報錯！
+          flutter create --project-name my_app .
           flutter pub get
 
       - name: Fix Android Settings
         run: |
-          sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
-          sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
+          # 雙重防護：不管是舊版還是最新版的 Android 設定檔，通通幫你改好！
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
+            sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
+          fi
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle.kts
+            sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
+          fi
 
       - name: Build APK
         run: flutter build apk --release
