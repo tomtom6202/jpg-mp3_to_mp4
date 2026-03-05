@@ -1,7 +1,44 @@
-name: Test Action
-on: [push, workflow_dispatch]
+name: Build APK
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
 jobs:
-  test:
+  build:
     runs-on: ubuntu-latest
+
     steps:
-      - run: echo "Hello World! 伺服器成功啟動！"
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+
+      - name: Initialize Flutter Project
+        run: |
+          flutter create .
+          flutter pub get
+
+      - name: Fix Android Settings
+        run: |
+          sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
+          sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
+
+      - name: Build APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: My-Video-App-APK
+          path: build/app/outputs/flutter-apk/app-release.apk
