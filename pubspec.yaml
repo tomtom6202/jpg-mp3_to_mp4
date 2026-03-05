@@ -9,7 +9,7 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-  file_picker: ^6.1.1
+  file_picker: ^8.1.6
   # 🏆 救星降臨：換成社群最新維護的版本，檔案絕對抓得到！
   ffmpeg_kit_flutter_new: ^4.1.0
   gal: ^2.1.3
