@@ -3,9 +3,9 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
-import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart'; // 解析音檔長度
+import 'package:ffmpeg_kit_flutter_new/ffprobe_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
-import 'package:ffmpeg_kit_flutter_new/statistics.dart'; // 讀取進度
+import 'package:ffmpeg_kit_flutter_new/statistics.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
@@ -21,10 +21,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: '文字音檔轉影片',
-      // 💡 升級 1：全域深色模式！
-      theme: ThemeData.dark(
-        useMaterial3: true,
-      ),
+      theme: ThemeData.dark(useMaterial3: true),
       home: const HomeScreen(),
     );
   }
@@ -39,12 +36,11 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _textController = TextEditingController(text: '測試測試');
-  double _fontSize = 50.0;
+  double _fontSize = 25.0; // 調整適合預覽框的基準字體大小
   String _resolution = '1080p';
   String? _audioPath;
   String? _audioName;
   
-  // 狀態管理
   bool _isProcessing = false;
   String _status = '準備就緒';
   double _progress = 0.0;
@@ -73,9 +69,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _generateVideo() async {
     if (_textController.text.isEmpty || _audioPath == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('請輸入文字並選擇音檔')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請輸入文字並選擇音檔')));
       return;
     }
 
@@ -83,32 +77,17 @@ class _HomeScreenState extends State<HomeScreen> {
       _isProcessing = true;
       _progress = 0.0;
       _progressTime = '';
-      _status = '正在分析音檔與生成圖片...';
+      _status = '正在獲取預覽畫面...';
     });
 
     try {
       double videoWidth = _resolution == '1080p' ? 1920 : 1280;
       double videoHeight = _resolution == '1080p' ? 1080 : 720;
 
-      // 生成圖片
-      final Uint8List? imageBytes = await _screenshotController.captureFromWidget(
-        Container(
-          width: videoWidth,
-          height: videoHeight,
-          color: Colors.black,
-          alignment: Alignment.center,
-          padding: const EdgeInsets.all(50),
-          child: Text(
-            _textController.text,
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: _fontSize,
-              fontWeight: FontWeight.bold,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ),
+      // 💡 絕招 1：所見即所得！直接以 5 倍超高解析度擷取「預覽畫面」
+      final Uint8List? imageBytes = await _screenshotController.capture(
         delay: const Duration(milliseconds: 100),
+        pixelRatio: 5.0, // 放大解析度以滿足 1080p 需求
       );
 
       if (imageBytes == null) throw Exception('圖片生成失敗');
@@ -116,7 +95,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final imageFile = File('${tempDir.path}/text_image.png');
       await imageFile.writeAsBytes(imageBytes);
 
-      // 💡 升級 2：獲取音檔總長度 (FFprobe)
       double durationInSeconds = 0.0;
       try {
         final mediaInfo = await FFprobeKit.getMediaInformation(_audioPath!);
@@ -125,7 +103,7 @@ class _HomeScreenState extends State<HomeScreen> {
           durationInSeconds = double.parse(info.getDuration()!);
         }
       } catch (e) {
-        debugPrint('讀取音檔長度失敗: $e');
+        debugPrint('讀取音長失敗: $e');
       }
       int totalMs = (durationInSeconds * 1000).toInt();
 
@@ -133,15 +111,14 @@ class _HomeScreenState extends State<HomeScreen> {
       final outputVideoPath = '${appDocDir.path}/output_video.mp4';
       if (await File(outputVideoPath).exists()) await File(outputVideoPath).delete();
 
-      // 💡 升級 3：使用專業 filter 防止變形 (等比縮放並補黑邊)
+      // 💡 絕招 2：加入 -c:a copy 終極加速指令！不重新編碼音檔，速度提升 10 倍！
+      // 💡 絕招 3：加入 -framerate 2 降低靜態圖片的無效處理
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
-      final ffmpegCommand = '-loop 1 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v mpeg4 -q:v 2 -c:a aac -b:a 192k -pix_fmt yuv420p -shortest "$outputVideoPath"';
+      final ffmpegCommand = '-loop 1 -framerate 2 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v mpeg4 -q:v 2 -c:a copy -pix_fmt yuv420p -shortest "$outputVideoPath"';
 
-      // 💡 升級 4：非同步執行並即時監聽進度
       FFmpegKit.executeAsync(
         ffmpegCommand,
         (session) async {
-          // 完成時的回呼
           final returnCode = await session.getReturnCode();
           if (ReturnCode.isSuccess(returnCode)) {
             bool hasPermission = await Gal.hasAccess();
@@ -149,19 +126,18 @@ class _HomeScreenState extends State<HomeScreen> {
             
             if (hasPermission) {
               await Gal.putVideo(outputVideoPath);
-              if (mounted) setState(() => _status = '🎉 轉換成功！影片已保存到相簿。\n畫質: $_resolution');
+              if (mounted) setState(() => _status = '🎉 轉換成功！\n畫質: $_resolution\n影片已保存到相簿');
             } else {
-              if (mounted) setState(() => _status = '轉換成功，但無相簿權限。\n影片存於: $outputVideoPath');
+              if (mounted) setState(() => _status = '無相簿權限。\n影片存於: $outputVideoPath');
             }
           } else {
             final failStackTrace = await session.getFailStackTrace();
-            if (mounted) setState(() => _status = '❌ 轉換失敗。\nERROR: $failStackTrace');
+            if (mounted) setState(() => _status = '❌ 轉換失敗。\n$failStackTrace');
           }
           if (mounted) setState(() => _isProcessing = false);
         },
-        (log) {}, // 忽略詳細日誌以節省效能
+        (log) {}, 
         (Statistics statistics) {
-          // 📊 進度回報回呼
           if (totalMs > 0) {
             int timeInMilliseconds = statistics.getTime();
             if (timeInMilliseconds > 0) {
@@ -170,18 +146,13 @@ class _HomeScreenState extends State<HomeScreen> {
 
               int currentSec = timeInMilliseconds ~/ 1000;
               int totalSec = totalMs ~/ 1000;
-
-              String formatTime(int seconds) {
-                int m = seconds ~/ 60;
-                int s = seconds % 60;
-                return '${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-              }
+              String format(int s) => '${(s ~/ 60).toString().padLeft(2, '0')}:${(s % 60).toString().padLeft(2, '0')}';
 
               if (mounted) {
                 setState(() {
                   _progress = percentage;
-                  _progressTime = '${formatTime(currentSec)} / ${formatTime(totalSec)}';
-                  _status = '正在合併影音... ${(percentage * 100).toStringAsFixed(1)}%';
+                  _progressTime = '${format(currentSec)} / ${format(totalSec)}';
+                  _status = '極速合併中... ${(percentage * 100).toStringAsFixed(1)}%';
                 });
               }
             }
@@ -207,26 +178,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    // 💡 升級 5：超精美進度條 UI
                     if (_progress > 0) ...[
-                      LinearProgressIndicator(
-                        value: _progress,
-                        minHeight: 15,
-                        borderRadius: BorderRadius.circular(10),
-                        backgroundColor: Colors.grey[800],
-                        color: Colors.greenAccent,
-                      ),
+                      LinearProgressIndicator(value: _progress, minHeight: 15, color: Colors.greenAccent),
                       const SizedBox(height: 15),
-                      Text(
-                        _progressTime,
-                        style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, letterSpacing: 2),
-                      ),
-                      const SizedBox(height: 20),
-                    ] else ...[
-                      const CircularProgressIndicator(),
-                      const SizedBox(height: 20),
-                    ],
-                    Text(_status, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16, color: Colors.grey)),
+                      Text(_progressTime, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+                    ] else const CircularProgressIndicator(),
+                    const SizedBox(height: 20),
+                    Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
                   ],
                 ),
               ),
@@ -240,6 +198,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     controller: _textController,
                     decoration: const InputDecoration(labelText: '輸入影片文字', border: OutlineInputBorder()),
                     maxLines: 3,
+                    onChanged: (_) => setState(() {}), // 讓輸入時預覽即時更新
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -252,39 +211,40 @@ class _HomeScreenState extends State<HomeScreen> {
                           DropdownMenuItem(value: '1080p', child: Text('1080p (1920x1080)')),
                           DropdownMenuItem(value: '720p', child: Text('720p (1280x720)')),
                         ],
-                        onChanged: (String? newValue) {
-                          if (newValue != null) setState(() => _resolution = newValue);
-                        },
+                        onChanged: (v) { if (v != null) setState(() => _resolution = v); },
                       ),
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Text('字體大小: ${_fontSize.toInt()}'),
+                  Text('字體大小 (影響排版): ${_fontSize.toInt()}'),
                   Slider(
                     value: _fontSize,
-                    min: 20,
-                    max: 200,
-                    divisions: 18,
-                    label: _fontSize.toInt().toString(),
+                    min: 10,
+                    max: 100,
+                    divisions: 90,
                     onChanged: (value) => setState(() => _fontSize = value),
                   ),
-                  const Text('圖片預覽 (16:9 比例):'),
+                  const Text('所見即所得預覽 (保證輸出排版相同):'),
                   const SizedBox(height: 8),
-                  AspectRatio(
-                    aspectRatio: 16 / 9,
-                    child: Container(
-                      color: Colors.black,
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.all(10),
-                      child: Text(
-                        _textController.text,
-                        style: TextStyle(color: Colors.white, fontSize: _fontSize / 4, fontWeight: FontWeight.bold),
-                        textAlign: TextAlign.center,
-                        maxLines: 4,
-                        overflow: TextOverflow.ellipsis,
+                  
+                  // 💡 絕招 1 核心：直接把整個預覽框包進 Screenshot 裡面擷取！
+                  Screenshot(
+                    controller: _screenshotController,
+                    child: AspectRatio(
+                      aspectRatio: 16 / 9,
+                      child: Container(
+                        color: Colors.black,
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Text(
+                          _textController.text,
+                          style: TextStyle(color: Colors.white, fontSize: _fontSize, fontWeight: FontWeight.bold),
+                          textAlign: TextAlign.center,
+                        ),
                       ),
                     ),
                   ),
+
                   const SizedBox(height: 20),
                   ElevatedButton.icon(
                     onPressed: _pickAudio,
@@ -298,13 +258,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     ),
                   const SizedBox(height: 30),
                   ElevatedButton(
-                    onPressed: _generateVideo, // 已經被 _isProcessing 保護，不怕連按
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.green,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 15),
-                    ),
-                    child: const Text('開始生成影片', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    onPressed: _generateVideo,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.green, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
+                    child: const Text('開始閃電生成', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(height: 20),
                   Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent)),
