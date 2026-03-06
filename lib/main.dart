@@ -36,7 +36,7 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   final TextEditingController _textController = TextEditingController(text: '測試測試');
-  double _fontSize = 25.0; // 調整適合預覽框的基準字體大小
+  double _fontSize = 25.0; 
   String _resolution = '1080p';
   String? _audioPath;
   String? _audioName;
@@ -84,10 +84,9 @@ class _HomeScreenState extends State<HomeScreen> {
       double videoWidth = _resolution == '1080p' ? 1920 : 1280;
       double videoHeight = _resolution == '1080p' ? 1080 : 720;
 
-      // 💡 絕招 1：所見即所得！直接以 5 倍超高解析度擷取「預覽畫面」
       final Uint8List? imageBytes = await _screenshotController.capture(
         delay: const Duration(milliseconds: 100),
-        pixelRatio: 5.0, // 放大解析度以滿足 1080p 需求
+        pixelRatio: 5.0, 
       );
 
       if (imageBytes == null) throw Exception('圖片生成失敗');
@@ -111,8 +110,6 @@ class _HomeScreenState extends State<HomeScreen> {
       final outputVideoPath = '${appDocDir.path}/output_video.mp4';
       if (await File(outputVideoPath).exists()) await File(outputVideoPath).delete();
 
-      // 💡 絕招 2：加入 -c:a copy 終極加速指令！不重新編碼音檔，速度提升 10 倍！
-      // 💡 絕招 3：加入 -framerate 2 降低靜態圖片的無效處理
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
       final ffmpegCommand = '-loop 1 -framerate 2 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v mpeg4 -q:v 2 -c:a copy -pix_fmt yuv420p -shortest "$outputVideoPath"';
 
@@ -198,7 +195,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     controller: _textController,
                     decoration: const InputDecoration(labelText: '輸入影片文字', border: OutlineInputBorder()),
                     maxLines: 3,
-                    onChanged: (_) => setState(() {}), // 讓輸入時預覽即時更新
+                    onChanged: (_) => setState(() {}),
                   ),
                   const SizedBox(height: 16),
                   Row(
@@ -216,7 +213,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     ],
                   ),
                   const SizedBox(height: 10),
-                  Text('字體大小 (影響排版): ${_fontSize.toInt()}'),
+                  Text('字體大小: ${_fontSize.toInt()}'),
                   Slider(
                     value: _fontSize,
                     min: 10,
@@ -227,19 +224,27 @@ class _HomeScreenState extends State<HomeScreen> {
                   const Text('所見即所得預覽 (保證輸出排版相同):'),
                   const SizedBox(height: 8),
                   
-                  // 💡 絕招 1 核心：直接把整個預覽框包進 Screenshot 裡面擷取！
+                  // 💡 修正文字偏上：加入 Center 絕對置中，並設定 height 調整基線
                   Screenshot(
                     controller: _screenshotController,
                     child: AspectRatio(
                       aspectRatio: 16 / 9,
                       child: Container(
                         color: Colors.black,
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(horizontal: 20),
-                        child: Text(
-                          _textController.text,
-                          style: TextStyle(color: Colors.white, fontSize: _fontSize, fontWeight: FontWeight.bold),
-                          textAlign: TextAlign.center,
+                        child: Center(
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(
+                              _textController.text,
+                              style: TextStyle(
+                                color: Colors.white, 
+                                fontSize: _fontSize, 
+                                fontWeight: FontWeight.bold,
+                                height: 1.2, // 💡 微調行高，改善中文偏上問題
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ),
                         ),
                       ),
                     ),
