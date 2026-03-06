@@ -26,16 +26,13 @@ jobs:
 
       - name: Generate Clean Project
         run: |
-          # 建立一個絕對乾淨的全新專案
           flutter create clean_app
-          # 把你的心血結晶複製進去
           cp pubspec.yaml clean_app/
           cp lib/main.dart clean_app/lib/
 
       - name: Fix Android Settings & Build
         run: |
           cd clean_app
-          # 雙重防護：修復 NDK
           if [ -f android/app/build.gradle ]; then
             sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
@@ -44,12 +41,13 @@ jobs:
             sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle.kts
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
           fi
-          # 開始打包！
           flutter pub get
-          flutter build apk --release
+          # 💡 終極解法：改成 debug 模式，強制保留所有底層零件，不准瘦身！
+          flutter build apk --debug
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: My-Video-App-APK
-          path: clean_app/build/app/outputs/flutter-apk/app-release.apk
+          # 💡 路徑也要跟著改成 debug 的產出位置
+          path: clean_app/build/app/outputs/flutter-apk/app-debug.apk
