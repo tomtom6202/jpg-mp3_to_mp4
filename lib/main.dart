@@ -2,7 +2,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-// 👇 這裡換成了全新的救星套件！
 import 'package:ffmpeg_kit_flutter_new/ffmpeg_kit.dart';
 import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:path_provider/path_provider.dart';
@@ -48,16 +47,37 @@ class _HomeScreenState extends State<HomeScreen> {
   final ScreenshotController _screenshotController = ScreenshotController();
 
   Future<void> _pickAudio() async {
-    FilePickerResult? result = await FilePicker.platform.pickFiles(
-      type: FileType.audio,
-    );
-
-    if (result != null) {
+    try {
       setState(() {
-        _audioPath = result.files.single.path;
-        _audioName = result.files.single.name;
-        _status = '已選擇音檔: $_audioName';
+        _status = '正在請求系統開啟檔案瀏覽器...';
       });
+      
+      // 💡 關鍵修改 1：放寬限制為 any，避免某些手機不支援純 audio 篩選
+      FilePickerResult? result = await FilePicker.platform.pickFiles(
+        type: FileType.any, 
+      );
+
+      if (result != null) {
+        setState(() {
+          _audioPath = result.files.single.path;
+          _audioName = result.files.single.name;
+          _status = '已選擇音檔: $_audioName';
+        });
+      } else {
+        setState(() {
+          _status = '已取消選擇檔案';
+        });
+      }
+    } catch (e) {
+      // 💡 關鍵修改 2：如果被手機系統擋住，把錯誤訊息直接印在螢幕上！
+      setState(() {
+        _status = '開啟檔案失敗: $e';
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('系統錯誤: $e')),
+        );
+      }
     }
   }
 
@@ -265,7 +285,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: const Text('開始生成影片', style: TextStyle(fontSize: 18)),
                   ),
                   const SizedBox(height: 20),
-                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey)),
+                  // 這行文字會顯示所有狀態和潛在的錯誤！
+                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
                 ],
               ),
             ),
