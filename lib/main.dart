@@ -117,7 +117,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (await File(outputVideoPath).exists()) await File(outputVideoPath).delete();
 
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
-      final ffmpegCommand = '-loop 1 -framerate 2 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v mpeg4 -q:v 2 -c:a copy -pix_fmt yuv420p -shortest "$outputVideoPath"';
+      final ffmpegCommand = '-loop 1 -framerate 1 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v mpeg4 -b:v 50k -c:a copy -pix_fmt yuv420p -shortest "$outputVideoPath"';
 
       FFmpegKit.executeAsync(
         ffmpegCommand,
