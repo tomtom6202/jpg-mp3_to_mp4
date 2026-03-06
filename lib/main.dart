@@ -73,26 +73,32 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
+    // 💡 關鍵修復 1：在畫面切換成「轉圈圈」之前，先偷偷把預覽框拍下來！
+    final Uint8List? imageBytes = await _screenshotController.capture(
+      delay: const Duration(milliseconds: 50),
+      pixelRatio: 3.0, // 💡 關鍵修復 2：稍微降倍率，避免某些手機記憶體爆炸
+    );
+
+    if (imageBytes == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('圖片截取失敗，請再試一次')));
+      return;
+    }
+
+    // 照片已經安全拿到手了！現在可以安心切換成讀取畫面了
     setState(() {
       _isProcessing = true;
       _progress = 0.0;
       _progressTime = '';
-      _status = '正在獲取預覽畫面...';
+      _status = '圖片已擷取，正在分析音檔...';
     });
 
     try {
       double videoWidth = _resolution == '1080p' ? 1920 : 1280;
       double videoHeight = _resolution == '1080p' ? 1080 : 720;
 
-      final Uint8List? imageBytes = await _screenshotController.capture(
-        delay: const Duration(milliseconds: 100),
-        pixelRatio: 5.0, 
-      );
-
-      if (imageBytes == null) throw Exception('圖片生成失敗');
       final tempDir = await getTemporaryDirectory();
       final imageFile = File('${tempDir.path}/text_image.png');
-      await imageFile.writeAsBytes(imageBytes);
+      await imageFile.writeAsBytes(imageBytes); // 把剛剛拿到的照片存起來
 
       double durationInSeconds = 0.0;
       try {
@@ -224,7 +230,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   const Text('所見即所得預覽 (保證輸出排版相同):'),
                   const SizedBox(height: 8),
                   
-                  // 💡 修正文字偏上：加入 Center 絕對置中，並設定 height 調整基線
                   Screenshot(
                     controller: _screenshotController,
                     child: AspectRatio(
@@ -240,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                 color: Colors.white, 
                                 fontSize: _fontSize, 
                                 fontWeight: FontWeight.bold,
-                                height: 1.2, // 💡 微調行高，改善中文偏上問題
+                                height: 1.2, 
                               ),
                               textAlign: TextAlign.center,
                             ),
