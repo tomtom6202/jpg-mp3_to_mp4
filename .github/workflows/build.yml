@@ -42,12 +42,12 @@ jobs:
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
           fi
           flutter pub get
-          # 💡 絕招 4：使用 --split-per-abi 切割架構，只產出精簡版 APK！
-          flutter build apk --release --split-per-abi
+          # 💡 混血療法：用 debug 保留零件，用 split-per-abi 保持檔案小巧！
+          flutter build apk --debug --split-per-abi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: My-Video-App-APK
-          # 💡 絕招 5：只抓取體積最小的 arm64 現代手機專用版！
-          path: clean_app/build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          # 💡 抓取小巧的 debug 版 APK
+          path: clean_app/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
