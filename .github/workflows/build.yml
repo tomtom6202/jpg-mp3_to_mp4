@@ -33,6 +33,10 @@ jobs:
       - name: Fix Android Settings & Build
         run: |
           cd clean_app
+          
+          # 💡 終極招牌魔法：強制把 Android 手機上的 App 顯示名稱改成你的專屬中文名！
+          sed -i 's/android:label="[^"]*"/android:label="召會信息編輯"/g' android/app/src/main/AndroidManifest.xml
+          
           if [ -f android/app/build.gradle ]; then
             sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
@@ -42,12 +46,10 @@ jobs:
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
           fi
           flutter pub get
-          # 💡 混血療法：用 debug 保留零件，用 split-per-abi 保持檔案小巧！
           flutter build apk --debug --split-per-abi
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: My-Video-App-APK
-          # 💡 抓取小巧的 debug 版 APK
           path: clean_app/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
