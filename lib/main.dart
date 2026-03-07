@@ -20,21 +20,69 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '文字音檔轉影片',
+      title: '全能影音工具箱',
       theme: ThemeData.dark(useMaterial3: true),
-      home: const HomeScreen(),
+      home: const MainTabScreen(), // 💡 進入點改成有底部選單的主畫面
     );
   }
 }
 
-class HomeScreen extends StatefulWidget {
-  const HomeScreen({super.key});
+// ==========================================
+// 🌟 主畫面：負責管理底部的兩個分頁切換
+// ==========================================
+class MainTabScreen extends StatefulWidget {
+  const MainTabScreen({super.key});
 
   @override
-  State<HomeScreen> createState() => _HomeScreenState();
+  State<MainTabScreen> createState() => _MainTabScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _MainTabScreenState extends State<MainTabScreen> {
+  int _currentIndex = 0;
+
+  final List<Widget> _pages = [
+    const VideoGenScreen(),  // 分頁 1：原本的文字轉影片
+    const AudioTrimScreen(), // 分頁 2：全新的裁減音檔功能
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: _pages[_currentIndex],
+      bottomNavigationBar: BottomNavigationBar(
+        currentIndex: _currentIndex,
+        onTap: (index) {
+          setState(() {
+            _currentIndex = index;
+          });
+        },
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.video_library),
+            label: '文字轉影片',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.content_cut),
+            label: '音影裁減 (MP3)',
+          ),
+        ],
+        selectedItemColor: Colors.greenAccent,
+      ),
+    );
+  }
+}
+
+// ==========================================
+// 🌟 分頁一：文字轉影片 (你原本的完美版代碼)
+// ==========================================
+class VideoGenScreen extends StatefulWidget {
+  const VideoGenScreen({super.key});
+
+  @override
+  State<VideoGenScreen> createState() => _VideoGenScreenState();
+}
+
+class _VideoGenScreenState extends State<VideoGenScreen> {
   final TextEditingController _textController = TextEditingController(text: '測試測試');
   double _fontSize = 25.0; 
   String _resolution = '1080p';
@@ -73,10 +121,9 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // 💡 關鍵修復 1：在畫面切換成「轉圈圈」之前，先偷偷把預覽框拍下來！
     final Uint8List? imageBytes = await _screenshotController.capture(
       delay: const Duration(milliseconds: 50),
-      pixelRatio: 3.0, // 💡 關鍵修復 2：稍微降倍率，避免某些手機記憶體爆炸
+      pixelRatio: 3.0, 
     );
 
     if (imageBytes == null) {
@@ -84,7 +131,6 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    // 照片已經安全拿到手了！現在可以安心切換成讀取畫面了
     setState(() {
       _isProcessing = true;
       _progress = 0.0;
@@ -98,7 +144,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
       final tempDir = await getTemporaryDirectory();
       final imageFile = File('${tempDir.path}/text_image.png');
-      await imageFile.writeAsBytes(imageBytes); // 把剛剛拿到的照片存起來
+      await imageFile.writeAsBytes(imageBytes);
 
       double durationInSeconds = 0.0;
       try {
@@ -107,9 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
         if (info != null && info.getDuration() != null) {
           durationInSeconds = double.parse(info.getDuration()!);
         }
-      } catch (e) {
-        debugPrint('讀取音長失敗: $e');
-      }
+      } catch (e) {}
       int totalMs = (durationInSeconds * 1000).toInt();
 
       final appDocDir = await getApplicationDocumentsDirectory();
@@ -117,6 +161,8 @@ class _HomeScreenState extends State<HomeScreen> {
       if (await File(outputVideoPath).exists()) await File(outputVideoPath).delete();
 
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
+      
+      // 💡 完美的幽靈瘦身指令
       final ffmpegCommand = '-loop 1 -framerate 1 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v mpeg4 -q:v 31 -g 300 -c:a copy -pix_fmt yuv420p -shortest "$outputVideoPath"';
 
       FFmpegKit.executeAsync(
@@ -173,7 +219,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('文字音檔轉影片')),
+      appBar: AppBar(title: const Text('文字轉靜態影片')),
       body: _isProcessing
           ? Center(
               child: Padding(
@@ -227,7 +273,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     divisions: 90,
                     onChanged: (value) => setState(() => _fontSize = value),
                   ),
-                  const Text('所見即所得預覽 (保證輸出排版相同):'),
+                  const Text('所見即所得預覽:'),
                   const SizedBox(height: 8),
                   
                   Screenshot(
@@ -274,6 +320,164 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                   const SizedBox(height: 20),
                   Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.redAccent)),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+// ==========================================
+// 🌟 分頁二：全新的「影音裁減 MP3」功能
+// ==========================================
+class AudioTrimScreen extends StatefulWidget {
+  const AudioTrimScreen({super.key});
+
+  @override
+  State<AudioTrimScreen> createState() => _AudioTrimScreenState();
+}
+
+class _AudioTrimScreenState extends State<AudioTrimScreen> {
+  final TextEditingController _startController = TextEditingController(text: '00:00:00');
+  final TextEditingController _endController = TextEditingController(text: '00:01:30');
+  
+  String? _inputPath;
+  String? _inputName;
+  bool _isProcessing = false;
+  String _status = '請選擇要裁減的檔案 (MP3 或 MP4 皆可)';
+
+  Future<void> _pickFile() async {
+    try {
+      FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
+      if (result != null) {
+        setState(() {
+          _inputPath = result.files.single.path;
+          _inputName = result.files.single.name;
+          _status = '已選擇: $_inputName\n請設定裁減時間';
+        });
+      }
+    } catch (e) {
+      setState(() => _status = '選擇檔案失敗: $e');
+    }
+  }
+
+  Future<void> _trimAudio() async {
+    if (_inputPath == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請先選擇檔案')));
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+      _status = '正在光速裁減並轉成 MP3...';
+    });
+
+    try {
+      // 💡 將檔案直接存到手機的「Download (下載)」資料夾，方便使用者找出來聽！
+      final downloadsDir = Directory('/storage/emulated/0/Download');
+      final outputFileName = '剪輯音檔_${DateTime.now().millisecondsSinceEpoch}.mp3';
+      final outputPath = '${downloadsDir.path}/$outputFileName';
+
+      if (await File(outputPath).exists()) {
+        await File(outputPath).delete();
+      }
+
+      // 💡 FFmpeg 裁減指令：
+      // -ss 起始時間
+      // -to 結束時間
+      // -vn 捨棄影片畫面 (如果輸入是 MP4)
+      // -c:a libmp3lame 轉碼為標準 MP3 格式
+      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -vn -c:a libmp3lame -b:a 192k "$outputPath"';
+
+      await FFmpegKit.execute(command).then((session) async {
+        final returnCode = await session.getReturnCode();
+        if (ReturnCode.isSuccess(returnCode)) {
+          setState(() {
+            _status = '🎉 裁減成功！\n檔案已存入手機的「Download (下載)」資料夾\n檔名: $outputFileName';
+          });
+        } else {
+          final failStackTrace = await session.getFailStackTrace();
+          setState(() => _status = '❌ 裁減失敗。\n$failStackTrace');
+        }
+      });
+    } catch (e) {
+      setState(() => _status = '發生錯誤: $e');
+    } finally {
+      setState(() => _isProcessing = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('音影裁減輸出 MP3')),
+      body: _isProcessing
+          ? Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const CircularProgressIndicator(),
+                  const SizedBox(height: 20),
+                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(fontSize: 16)),
+                ],
+              ),
+            )
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('1. 選擇來源檔案', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  ElevatedButton.icon(
+                    onPressed: _pickFile,
+                    icon: const Icon(Icons.folder_open),
+                    label: Text(_inputName == null ? '選擇 MP3 或 MP4' : '重新選擇'),
+                    style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                  ),
+                  if (_inputName != null) ...[
+                    const SizedBox(height: 8),
+                    Text('目前檔案: $_inputName', style: const TextStyle(color: Colors.greenAccent)),
+                  ],
+                  
+                  const SizedBox(height: 30),
+                  const Text('2. 設定擷取範圍 (時:分:秒)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _startController,
+                          decoration: const InputDecoration(labelText: '開始時間', border: OutlineInputBorder()),
+                          keyboardType: TextInputType.datetime,
+                        ),
+                      ),
+                      const Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 10),
+                        child: Text('至', style: TextStyle(fontSize: 16)),
+                      ),
+                      Expanded(
+                        child: TextField(
+                          controller: _endController,
+                          decoration: const InputDecoration(labelText: '結束時間', border: OutlineInputBorder()),
+                          keyboardType: TextInputType.datetime,
+                        ),
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 40),
+                  ElevatedButton(
+                    onPressed: _trimAudio,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.orangeAccent,
+                      foregroundColor: Colors.black,
+                      padding: const EdgeInsets.symmetric(vertical: 15)
+                    ),
+                    child: const Text('開始裁減並輸出 MP3', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, height: 1.5)),
                 ],
               ),
             ),
