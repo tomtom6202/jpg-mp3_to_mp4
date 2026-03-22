@@ -73,7 +73,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
 }
 
 // ==========================================
-// 🌟 分頁一：文字轉影片 (獨立雙選單版)
+// 🌟 分頁一：文字轉影片 (任意輸入 FPS 版)
 // ==========================================
 class VideoGenScreen extends StatefulWidget {
   const VideoGenScreen({super.key});
@@ -84,12 +84,12 @@ class VideoGenScreen extends StatefulWidget {
 
 class _VideoGenScreenState extends State<VideoGenScreen> {
   final TextEditingController _textController = TextEditingController(text: '測試測試');
+  
+  // 💡 新增：用來讓使用者自由輸入 FPS 的控制器
+  final TextEditingController _fpsController = TextEditingController(text: '30'); 
+  
   double _fontSize = 25.0; 
   String _resolution = '1080p';
-  
-  // 💡 恢復成兩個獨立的控制選項
-  String _fps = '30'; // 預設 30 FPS
-  String _codecMode = 'hevc'; // 預設 HEVC (高相容)
 
   String? _audioPath;
   String? _audioName;
@@ -123,6 +123,13 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
   Future<void> _generateVideo() async {
     if (_textController.text.isEmpty || _audioPath == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請輸入文字並選擇音檔')));
+      return;
+    }
+
+    // 💡 驗證 FPS 欄位輸入的數字是否正確 (1 ~ 30)
+    int fps = int.tryParse(_fpsController.text) ?? 30;
+    if (fps < 1 || fps > 30) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ FPS 請輸入 1 到 30 之間的數字')));
       return;
     }
 
@@ -167,19 +174,11 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
 
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
       
-      // 💡 動態判斷 GOP：如果是 30fps，就用標準 60；如果是 1fps，就用極致壓縮 300
-      String gopValue = _fps == '30' ? '60' : '300';
+      // 💡 動態調整關鍵影格 (GOP) 來達到最佳壓縮：FPS 若為 1 則用 300，其他則設定為 FPS 的兩倍
+      int gopValue = (fps == 1) ? 300 : fps * 2;
       
-      // 💡 動態組裝編碼指令
-      String codecPart = '';
-      if (_codecMode == 'hevc') {
-        codecPart = '-c:v libx265 -crf 35 -preset ultrafast -tag:v hvc1 -g $gopValue -c:a aac -b:a 192k';
-      } else {
-        codecPart = '-c:v mpeg4 -q:v 31 -g $gopValue -c:a copy';
-      }
-
-      // 最終合併的超級指令
-      final ffmpegCommand = '-loop 1 -framerate $_fps -i ${imageFile.path} -i "$_audioPath" -vf "$filter" $codecPart -pix_fmt yuv420p -shortest "$outputVideoPath"';
+      // 💡 終極極速版指令：保留 MPEG4 + Copy，並套用你自由輸入的 FPS
+      final ffmpegCommand = '-loop 1 -framerate $fps -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v mpeg4 -q:v 31 -g $gopValue -c:a copy -pix_fmt yuv420p -shortest "$outputVideoPath"';
 
       FFmpegKit.executeAsync(
         ffmpegCommand,
@@ -191,7 +190,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
             
             if (hasPermission) {
               await Gal.putVideo(outputVideoPath);
-              if (mounted) setState(() => _status = '🎉 轉換成功！\n$_fps FPS | ${_codecMode == 'hevc' ? 'HEVC 高相容' : 'MPEG4 極速'}\n影片已保存');
+              if (mounted) setState(() => _status = '🎉 轉換成功！\n$fps FPS | MPEG4 極速版\n影片已保存');
             } else {
               if (mounted) setState(() => _status = '無相簿權限。\n影片存於: $outputVideoPath');
             }
@@ -282,35 +281,25 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 10),
                   
-                  // 💡 恢復：獨立的 FPS 選單
+                  // 💡 移除原本的編碼選單，把 FPS 變成自由輸入的文字框
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('影片幀率:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                      DropdownButton<String>(
-                        value: _fps,
-                        items: const [
-                          DropdownMenuItem(value: '30', child: Text('30 FPS (AI/剪輯相容)')),
-                          DropdownMenuItem(value: '1', child: Text('1 FPS (省空間)')),
-                        ],
-                        onChanged: (v) { if (v != null) setState(() => _fps = v); },
-                      ),
-                    ],
-                  ),
-
-                  // 💡 恢復：獨立的編碼格式選單
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('編碼格式:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                      DropdownButton<String>(
-                        value: _codecMode,
-                        items: const [
-                          DropdownMenuItem(value: 'hevc', child: Text('HEVC+AAC (高相容)')),
-                          DropdownMenuItem(value: 'mpeg4', child: Text('MPEG4+Copy (極速)')),
-                        ],
-                        onChanged: (v) { if (v != null) setState(() => _codecMode = v); },
+                      const Text('影片幀率 (輸入 1~30):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      SizedBox(
+                        width: 80,
+                        child: TextField(
+                          controller: _fpsController,
+                          keyboardType: TextInputType.number, // 彈出數字鍵盤
+                          textAlign: TextAlign.center,
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
                       ),
                     ],
                   ),
