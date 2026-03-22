@@ -20,9 +20,9 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: '全能影音工具箱',
+      title: '召會信息編輯',
       theme: ThemeData.dark(useMaterial3: true),
-      home: const MainTabScreen(), // 💡 進入點改成有底部選單的主畫面
+      home: const MainTabScreen(), 
     );
   }
 }
@@ -41,8 +41,8 @@ class _MainTabScreenState extends State<MainTabScreen> {
   int _currentIndex = 0;
 
   final List<Widget> _pages = [
-    const VideoGenScreen(),  // 分頁 1：原本的文字轉影片
-    const AudioTrimScreen(), // 分頁 2：全新的裁減音檔功能
+    const VideoGenScreen(),  
+    const AudioTrimScreen(), 
   ];
 
   @override
@@ -73,7 +73,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
 }
 
 // ==========================================
-// 🌟 分頁一：文字轉影片 (你原本的完美版代碼)
+// 🌟 分頁一：文字轉影片 (獨立雙選單版)
 // ==========================================
 class VideoGenScreen extends StatefulWidget {
   const VideoGenScreen({super.key});
@@ -86,6 +86,11 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
   final TextEditingController _textController = TextEditingController(text: '測試測試');
   double _fontSize = 25.0; 
   String _resolution = '1080p';
+  
+  // 💡 恢復成兩個獨立的控制選項
+  String _fps = '30'; // 預設 30 FPS
+  String _codecMode = 'hevc'; // 預設 HEVC (高相容)
+
   String? _audioPath;
   String? _audioName;
   
@@ -162,8 +167,19 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
 
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
       
-      // 💡 完美的幽靈瘦身指令
-      final ffmpegCommand = '-loop 1 -framerate 1 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v libx265 -crf 35 -preset ultrafast -tag:v hvc1 -g 300 -c:a aac -b:a 192k -pix_fmt yuv420p -shortest "$outputVideoPath"';
+      // 💡 動態判斷 GOP：如果是 30fps，就用標準 60；如果是 1fps，就用極致壓縮 300
+      String gopValue = _fps == '30' ? '60' : '300';
+      
+      // 💡 動態組裝編碼指令
+      String codecPart = '';
+      if (_codecMode == 'hevc') {
+        codecPart = '-c:v libx265 -crf 35 -preset ultrafast -tag:v hvc1 -g $gopValue -c:a aac -b:a 192k';
+      } else {
+        codecPart = '-c:v mpeg4 -q:v 31 -g $gopValue -c:a copy';
+      }
+
+      // 最終合併的超級指令
+      final ffmpegCommand = '-loop 1 -framerate $_fps -i ${imageFile.path} -i "$_audioPath" -vf "$filter" $codecPart -pix_fmt yuv420p -shortest "$outputVideoPath"';
 
       FFmpegKit.executeAsync(
         ffmpegCommand,
@@ -175,7 +191,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
             
             if (hasPermission) {
               await Gal.putVideo(outputVideoPath);
-              if (mounted) setState(() => _status = '🎉 轉換成功！\n畫質: $_resolution\n影片已保存到相簿');
+              if (mounted) setState(() => _status = '🎉 轉換成功！\n$_fps FPS | ${_codecMode == 'hevc' ? 'HEVC 高相容' : 'MPEG4 極速'}\n影片已保存');
             } else {
               if (mounted) setState(() => _status = '無相簿權限。\n影片存於: $outputVideoPath');
             }
@@ -201,7 +217,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
                 setState(() {
                   _progress = percentage;
                   _progressTime = '${format(currentSec)} / ${format(totalSec)}';
-                  _status = '極速合併中... ${(percentage * 100).toStringAsFixed(1)}%';
+                  _status = '合併中... ${(percentage * 100).toStringAsFixed(1)}%';
                 });
               }
             }
@@ -250,20 +266,55 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
                     onChanged: (_) => setState(() {}),
                   ),
                   const SizedBox(height: 16),
+                  
+                  // 畫質選單
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      const Text('影片畫質:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                      const Text('影片畫質:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                       DropdownButton<String>(
                         value: _resolution,
                         items: const [
-                          DropdownMenuItem(value: '1080p', child: Text('1080p (1920x1080)')),
-                          DropdownMenuItem(value: '720p', child: Text('720p (1280x720)')),
+                          DropdownMenuItem(value: '1080p', child: Text('1080p')),
+                          DropdownMenuItem(value: '720p', child: Text('720p')),
                         ],
                         onChanged: (v) { if (v != null) setState(() => _resolution = v); },
                       ),
                     ],
                   ),
+                  
+                  // 💡 恢復：獨立的 FPS 選單
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('影片幀率:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      DropdownButton<String>(
+                        value: _fps,
+                        items: const [
+                          DropdownMenuItem(value: '30', child: Text('30 FPS (AI/剪輯相容)')),
+                          DropdownMenuItem(value: '1', child: Text('1 FPS (省空間)')),
+                        ],
+                        onChanged: (v) { if (v != null) setState(() => _fps = v); },
+                      ),
+                    ],
+                  ),
+
+                  // 💡 恢復：獨立的編碼格式選單
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('編碼格式:', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      DropdownButton<String>(
+                        value: _codecMode,
+                        items: const [
+                          DropdownMenuItem(value: 'hevc', child: Text('HEVC+AAC (高相容)')),
+                          DropdownMenuItem(value: 'mpeg4', child: Text('MPEG4+Copy (極速)')),
+                        ],
+                        onChanged: (v) { if (v != null) setState(() => _codecMode = v); },
+                      ),
+                    ],
+                  ),
+
                   const SizedBox(height: 10),
                   Text('字體大小: ${_fontSize.toInt()}'),
                   Slider(
@@ -373,7 +424,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     });
 
     try {
-      // 💡 將檔案直接存到手機的「Download (下載)」資料夾，方便使用者找出來聽！
       final downloadsDir = Directory('/storage/emulated/0/Download');
       final outputFileName = '剪輯音檔_${DateTime.now().millisecondsSinceEpoch}.mp3';
       final outputPath = '${downloadsDir.path}/$outputFileName';
@@ -382,11 +432,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         await File(outputPath).delete();
       }
 
-      // 💡 FFmpeg 裁減指令：
-      // -ss 起始時間
-      // -to 結束時間
-      // -vn 捨棄影片畫面 (如果輸入是 MP4)
-      // -c:a libmp3lame 轉碼為標準 MP3 格式
       final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -vn -c:a libmp3lame -b:a 192k "$outputPath"';
 
       await FFmpegKit.execute(command).then((session) async {
