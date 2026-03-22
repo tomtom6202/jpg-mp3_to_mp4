@@ -163,7 +163,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
       
       // 💡 完美的幽靈瘦身指令
-      final ffmpegCommand = '-loop 1 -framerate 1 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v mpeg4 -q:v 31 -g 300 -c:a copy -pix_fmt yuv420p -shortest "$outputVideoPath"';
+      final ffmpegCommand = '-loop 1 -framerate 1 -i ${imageFile.path} -i "$_audioPath" -vf "$filter" -c:v libx265 -crf 35 -preset ultrafast -tag:v hvc1 -g 300 -c:a aac -b:a 192k -pix_fmt yuv420p -shortest "$outputVideoPath"';
 
       FFmpegKit.executeAsync(
         ffmpegCommand,
