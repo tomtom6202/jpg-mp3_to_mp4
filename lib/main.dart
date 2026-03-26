@@ -78,10 +78,7 @@ class VideoGenScreen extends StatefulWidget {
 
 class _VideoGenScreenState extends State<VideoGenScreen> {
   final TextEditingController _textController = TextEditingController(text: '測試測試');
-  
-  // 💡 修改 1：預設 FPS 改為 2
   final TextEditingController _fpsController = TextEditingController(text: '2'); 
-  
   double _fontSize = 25.0; 
   String _resolution = '1080p';
 
@@ -224,7 +221,8 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('文字轉靜態影片')),
+      // 💡 正式掛上設計師簽名
+      appBar: AppBar(title: const Text('文字轉靜態影片 (Designed by Thomas)')),
       body: _isProcessing
           ? Center(
               child: Padding(
@@ -312,7 +310,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
 }
 
 // ==========================================
-// 🌟 分頁二：智慧無聲偵測 & 裁減 (自動填入時間版)
+// 🌟 分頁二：智慧無聲偵測 & 裁減
 // ==========================================
 class AudioTrimScreen extends StatefulWidget {
   const AudioTrimScreen({super.key});
@@ -323,14 +321,13 @@ class AudioTrimScreen extends StatefulWidget {
 
 class _AudioTrimScreenState extends State<AudioTrimScreen> {
   final TextEditingController _startController = TextEditingController(text: '00:00:00');
-  final TextEditingController _endController = TextEditingController(text: '00:00:00'); // 預設歸零，等讀取
+  final TextEditingController _endController = TextEditingController(text: '00:00:00'); 
   
   String? _inputPath;
   String? _inputName;
   bool _isProcessing = false;
   String _status = '請選擇要處理的檔案';
 
-  // 💡 將秒數格式化為 hh:mm:ss 的輔助函數
   String _formatDuration(double totalSeconds) {
     int hours = totalSeconds ~/ 3600;
     int minutes = (totalSeconds % 3600) ~/ 60;
@@ -347,10 +344,9 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         setState(() {
           _inputPath = result.files.single.path;
           _inputName = result.files.single.name;
-          _status = '正在讀取檔案總長度...'; // 提示正在讀取
+          _status = '正在讀取檔案總長度...'; 
         });
 
-        // 💡 修改 2：自動讀取檔案長度並填入結束時間
         try {
           final mediaInfo = await FFprobeKit.getMediaInformation(_inputPath!);
           final info = mediaInfo.getMediaInformation();
@@ -461,7 +457,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         double absoluteStart = startSec + chunkRelativeStart; 
         
         String partName = (i + 1).toString().padLeft(2, '0');
-        final outputPath = '${downloadsDir.path}/信息_$timestamp\_part$partName.mp3';
+        final outputPath = '${downloadsDir.path}/信息_${timestamp}_part$partName.mp3';
 
         String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
         final sliceSession = await FFmpegKit.execute(sliceCmd);
@@ -495,8 +491,8 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
 
     try {
       final downloadsDir = Directory('/storage/emulated/0/Download');
-      final outputFileName = '剪輯音檔_${DateTime.now().millisecondsSinceEpoch}.mp3';
-      final outputPath = '${downloadsDir.path}/$outputFileName';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final outputPath = '${downloadsDir.path}/剪輯音檔_$timestamp.mp3';
 
       if (await File(outputPath).exists()) await File(outputPath).delete();
 
@@ -520,7 +516,8 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('音影裁減輸出 MP3')),
+      // 💡 正式掛上設計師簽名
+      appBar: AppBar(title: const Text('音影裁減輸出 MP3 (Designed by Thomas)')),
       body: _isProcessing
           ? Center(
               child: Padding(
@@ -547,3 +544,43 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                     icon: const Icon(Icons.folder_open),
                     label: Text(_inputName == null ? '選擇 MP3 或 MP4' : '重新選擇'),
                     style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
+                  ),
+                  if (_inputName != null) ...[
+                    const SizedBox(height: 8),
+                    Text('目前檔案: $_inputName', style: const TextStyle(color: Colors.greenAccent)),
+                  ],
+                  
+                  const SizedBox(height: 30),
+                  const Text('2. 設定擷取範圍 (時:分:秒)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(child: TextField(controller: _startController, decoration: const InputDecoration(labelText: '開始時間', border: OutlineInputBorder()), keyboardType: TextInputType.datetime)),
+                      const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('至', style: TextStyle(fontSize: 16))),
+                      Expanded(child: TextField(controller: _endController, decoration: const InputDecoration(labelText: '結束時間', border: OutlineInputBorder()), keyboardType: TextInputType.datetime)),
+                    ],
+                  ),
+
+                  const SizedBox(height: 40),
+                  
+                  ElevatedButton(
+                    onPressed: _normalTrim,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 15)),
+                    child: const Text('單純裁減一刀 (單軌 128k)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                  const SizedBox(height: 15),
+                  
+                  ElevatedButton(
+                    onPressed: _smartSplitTrim,
+                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
+                    child: const Text('智慧無聲分割 (每20分/單軌 128k)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  ),
+                  
+                  const SizedBox(height: 20),
+                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, height: 1.5)),
+                ],
+              ),
+            ),
+    );
+  }
+}
