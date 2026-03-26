@@ -33,8 +33,9 @@ jobs:
       - name: Fix Android Settings & Build
         run: |
           cd clean_app
+          # 💡 新增：自動安裝「記憶體」套件，用來記住你的資料夾！
+          flutter pub add shared_preferences
           
-          # 💡 終極招牌魔法：強制把 Android 手機上的 App 顯示名稱改成你的專屬中文名！
           sed -i 's/android:label="[^"]*"/android:label="召會信息編輯"/g' android/app/src/main/AndroidManifest.xml
           
           if [ -f android/app/build.gradle ]; then
