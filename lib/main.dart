@@ -78,7 +78,10 @@ class VideoGenScreen extends StatefulWidget {
 
 class _VideoGenScreenState extends State<VideoGenScreen> {
   final TextEditingController _textController = TextEditingController(text: '測試測試');
-  final TextEditingController _fpsController = TextEditingController(text: '30'); 
+  
+  // 💡 修改 1：預設 FPS 改為 2
+  final TextEditingController _fpsController = TextEditingController(text: '2'); 
+  
   double _fontSize = 25.0; 
   String _resolution = '1080p';
 
@@ -117,7 +120,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
       return;
     }
 
-    int fps = int.tryParse(_fpsController.text) ?? 30;
+    int fps = int.tryParse(_fpsController.text) ?? 2;
     if (fps < 1 || fps > 30) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('⚠️ FPS 請輸入 1 到 30 之間的數字')));
       return;
@@ -309,7 +312,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
 }
 
 // ==========================================
-// 🌟 分頁二：智慧無聲偵測 & 裁減
+// 🌟 分頁二：智慧無聲偵測 & 裁減 (自動填入時間版)
 // ==========================================
 class AudioTrimScreen extends StatefulWidget {
   const AudioTrimScreen({super.key});
@@ -320,29 +323,58 @@ class AudioTrimScreen extends StatefulWidget {
 
 class _AudioTrimScreenState extends State<AudioTrimScreen> {
   final TextEditingController _startController = TextEditingController(text: '00:00:00');
-  final TextEditingController _endController = TextEditingController(text: '01:30:00'); 
+  final TextEditingController _endController = TextEditingController(text: '00:00:00'); // 預設歸零，等讀取
   
   String? _inputPath;
   String? _inputName;
   bool _isProcessing = false;
   String _status = '請選擇要處理的檔案';
 
+  // 💡 將秒數格式化為 hh:mm:ss 的輔助函數
+  String _formatDuration(double totalSeconds) {
+    int hours = totalSeconds ~/ 3600;
+    int minutes = (totalSeconds % 3600) ~/ 60;
+    int seconds = (totalSeconds % 60).toInt();
+    return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _pickFile() async {
     try {
+      setState(() => _status = '正在請求系統開啟檔案總管...');
       FilePickerResult? result = await FilePicker.platform.pickFiles(type: FileType.any);
+      
       if (result != null) {
         setState(() {
           _inputPath = result.files.single.path;
           _inputName = result.files.single.name;
-          _status = '已選擇: $_inputName\n請設定時間並選擇輸出方式';
+          _status = '正在讀取檔案總長度...'; // 提示正在讀取
         });
+
+        // 💡 修改 2：自動讀取檔案長度並填入結束時間
+        try {
+          final mediaInfo = await FFprobeKit.getMediaInformation(_inputPath!);
+          final info = mediaInfo.getMediaInformation();
+          if (info != null && info.getDuration() != null) {
+            double duration = double.parse(info.getDuration()!);
+            setState(() {
+              _startController.text = '00:00:00';
+              _endController.text = _formatDuration(duration);
+              _status = '已選擇: $_inputName\n✅ 檔案總長度已自動填寫！';
+            });
+          } else {
+            setState(() => _status = '已選擇: $_inputName\n(無法自動讀取長度，請手動輸入)');
+          }
+        } catch (e) {
+          setState(() => _status = '已選擇: $_inputName\n(讀取長度失敗，請手動輸入)');
+        }
+      } else {
+        setState(() => _status = '已取消選擇');
       }
     } catch (e) {
       setState(() => _status = '選擇檔案失敗: $e');
     }
   }
 
-  // 將 hh:mm:ss 轉為秒數
   int _timeToSeconds(String timeStr) {
     try {
       var parts = timeStr.split(':');
@@ -373,7 +405,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     });
 
     try {
-      // 💡 階段一：使用 silencedetect 掃描，-35dB 持續 1.5 秒即視為無聲（適合人聲演講）
       String detectCmd = '-ss ${_startController.text} -t $totalDuration -i "$_inputPath" -af silencedetect=noise=-35dB:d=1.5 -f null -';
       final detectSession = await FFmpegKit.execute(detectCmd);
       final logs = await detectSession.getLogs();
@@ -385,7 +416,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
           try {
             final parts = text.split('silence_start:');
             final timeStr = parts[1].trim().split(' ')[0];
-            silencePoints.add(double.parse(timeStr)); // 這是相對於 startSec 的時間
+            silencePoints.add(double.parse(timeStr)); 
           } catch (e) {}
         }
       }
@@ -394,7 +425,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在計算最佳 20 分鐘切割位置...';
       });
 
-      // 💡 智慧切割邏輯：每 1200 秒 (20分) 找尋最近的無聲點
       List<double> splitTimes = [0.0];
       double currentTarget = 1200.0;
       
@@ -409,7 +439,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
           }
         }
         
-        // 如果 5 分鐘內 (300秒) 都找不到無聲點，就只好硬切
         if (minDiff > 300.0) {
           bestPoint = currentTarget;
         }
@@ -422,7 +451,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       final downloadsDir = Directory('/storage/emulated/0/Download');
       final timestamp = DateTime.now().millisecondsSinceEpoch;
 
-      // 💡 階段三：依據計算出的時間點，逐一切割並輸出單軌 MP3
       for (int i = 0; i < splitTimes.length - 1; i++) {
         setState(() {
           _status = '🚀 階段三：正在輸出 Part ${i + 1} / ${splitTimes.length - 1} ...\n這會需要幾分鐘的時間';
@@ -430,12 +458,11 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
 
         double chunkRelativeStart = splitTimes[i];
         double chunkDuration = splitTimes[i + 1] - chunkRelativeStart;
-        double absoluteStart = startSec + chunkRelativeStart; // 換算回原始檔案的絕對時間
+        double absoluteStart = startSec + chunkRelativeStart; 
         
         String partName = (i + 1).toString().padLeft(2, '0');
         final outputPath = '${downloadsDir.path}/信息_$timestamp\_part$partName.mp3';
 
-        // 強制轉單軌 (-ac 1) 並降碼率至 128k
         String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
         final sliceSession = await FFmpegKit.execute(sliceCmd);
         
@@ -455,7 +482,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     }
   }
 
-  // 保留原本的單一檔案輸出 (不分割)
   Future<void> _normalTrim() async {
     if (_inputPath == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請先選擇檔案')));
@@ -521,45 +547,3 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                     icon: const Icon(Icons.folder_open),
                     label: Text(_inputName == null ? '選擇 MP3 或 MP4' : '重新選擇'),
                     style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
-                  ),
-                  if (_inputName != null) ...[
-                    const SizedBox(height: 8),
-                    Text('目前檔案: $_inputName', style: const TextStyle(color: Colors.greenAccent)),
-                  ],
-                  
-                  const SizedBox(height: 30),
-                  const Text('2. 設定擷取範圍 (時:分:秒)', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(child: TextField(controller: _startController, decoration: const InputDecoration(labelText: '開始時間', border: OutlineInputBorder()), keyboardType: TextInputType.datetime)),
-                      const Padding(padding: EdgeInsets.symmetric(horizontal: 10), child: Text('至', style: TextStyle(fontSize: 16))),
-                      Expanded(child: TextField(controller: _endController, decoration: const InputDecoration(labelText: '結束時間', border: OutlineInputBorder()), keyboardType: TextInputType.datetime)),
-                    ],
-                  ),
-
-                  const SizedBox(height: 40),
-                  
-                  // 💡 UI 上的三個層次選擇
-                  ElevatedButton(
-                    onPressed: _normalTrim,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 15)),
-                    child: const Text('單純裁減一刀 (單軌 128k)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                  const SizedBox(height: 15),
-                  
-                  // 💡 新增的智慧分割按鈕
-                  ElevatedButton(
-                    onPressed: _smartSplitTrim,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
-                    child: const Text('智慧無聲分割 (每20分/單軌 128k)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  ),
-                  
-                  const SizedBox(height: 20),
-                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.grey, height: 1.5)),
-                ],
-              ),
-            ),
-    );
-  }
-}
