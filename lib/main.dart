@@ -9,7 +9,7 @@ import 'package:ffmpeg_kit_flutter_new/statistics.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
-import 'package:shared_preferences/shared_preferences.dart'; // 💡 新增記憶套件
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const MyApp());
@@ -68,7 +68,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
 }
 
 // ==========================================
-// 🌟 分頁一：文字轉影片 (含獨立記憶資料夾)
+// 🌟 分頁一：文字轉影片 (含自訂檔名與記憶)
 // ==========================================
 class VideoGenScreen extends StatefulWidget {
   const VideoGenScreen({super.key});
@@ -78,8 +78,10 @@ class VideoGenScreen extends StatefulWidget {
 }
 
 class _VideoGenScreenState extends State<VideoGenScreen> {
-  final TextEditingController _textController = TextEditingController(text: '測試測試');
+  final TextEditingController _textController = TextEditingController();
   final TextEditingController _fpsController = TextEditingController(text: '2'); 
+  final TextEditingController _fileNameController = TextEditingController(); // 💡 新增檔名控制器
+  
   double _fontSize = 25.0; 
   String _resolution = '1080p';
 
@@ -91,31 +93,30 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
   double _progress = 0.0;
   String _progressTime = '';
   
-  // 💡 影片專屬的輸出資料夾變數
   String _outputDir = '/storage/emulated/0/Download'; 
-  
   final ScreenshotController _screenshotController = ScreenshotController();
 
   @override
   void initState() {
     super.initState();
-    _loadSavedDirectory(); // 一開App就讀取記憶
+    _loadSavedData(); // 一開App就讀取所有記憶
   }
 
-  // 💡 讀取上次存的影片資料夾
-  Future<void> _loadSavedDirectory() async {
+  // 💡 讀取上次存的文字、檔名和資料夾
+  Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _outputDir = prefs.getString('video_output_dir') ?? '/storage/emulated/0/Download';
+      _textController.text = prefs.getString('video_text') ?? '測試'; // 預設改為「測試」
+      _fileNameController.text = prefs.getString('video_filename') ?? '輸出影片';
     });
   }
 
-  // 💡 選擇新資料夾並記憶
   Future<void> _pickOutputDir() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
     if (selectedDirectory != null) {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('video_output_dir', selectedDirectory); // 寫入記憶
+      await prefs.setString('video_output_dir', selectedDirectory);
       setState(() {
         _outputDir = selectedDirectory;
       });
@@ -188,10 +189,11 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
       } catch (e) {}
       int totalMs = (durationInSeconds * 1000).toInt();
 
-      // 💡 輸出路徑改用我們指定的 _outputDir
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      final outputVideoPath = '$_outputDir/信息影片_$timestamp.mp4';
-      if (await File(outputVideoPath).exists()) await File(outputVideoPath).delete();
+      // 💡 組合自訂檔名 (如果使用者清空，就給個預設值)
+      String baseName = _fileNameController.text.trim();
+      if (baseName.isEmpty) baseName = '輸出影片';
+      final outputVideoPath = '$_outputDir/$baseName.mp4';
+      if (await File(outputVideoPath).exists()) await File(outputVideoPath).delete(); // 若有同名檔案則覆蓋
 
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
       int gopValue = (fps == 1) ? 300 : fps * 2;
@@ -203,12 +205,11 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
         (session) async {
           final returnCode = await session.getReturnCode();
           if (ReturnCode.isSuccess(returnCode)) {
-            // 💡 成功後，一樣通知系統相簿，並提醒使用者檔案確切位置
             bool hasPermission = await Gal.hasAccess();
             if (!hasPermission) hasPermission = await Gal.requestAccess();
             if (hasPermission) await Gal.putVideo(outputVideoPath);
             
-            if (mounted) setState(() => _status = '🎉 轉換成功！\n影片已存入:\n$_outputDir');
+            if (mounted) setState(() => _status = '🎉 轉換成功！\n檔名: $baseName.mp4\n已存入:\n$_outputDir');
           } else {
             final failStackTrace = await session.getFailStackTrace();
             if (mounted) setState(() => _status = '❌ 轉換失敗。\n$failStackTrace');
@@ -273,7 +274,17 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  TextField(controller: _textController, decoration: const InputDecoration(labelText: '輸入影片文字', border: OutlineInputBorder()), maxLines: 3, onChanged: (_) => setState(() {})),
+                  // 💡 修改：輸入文字時，即時更新記憶體
+                  TextField(
+                    controller: _textController, 
+                    decoration: const InputDecoration(labelText: '輸入影片文字', border: OutlineInputBorder()), 
+                    maxLines: 3, 
+                    onChanged: (val) async {
+                      setState(() {}); 
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('video_text', val);
+                    }
+                  ),
                   const SizedBox(height: 16),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -329,7 +340,19 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
                   const SizedBox(height: 20),
                   const Divider(),
                   
-                  // 💡 影片輸出資料夾選擇區塊
+                  // 💡 新增：儲存檔名輸入框 (附帶自動記憶)
+                  const Text('輸出檔名:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 5),
+                  TextField(
+                    controller: _fileNameController,
+                    decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 10), border: OutlineInputBorder(), hintText: '請輸入檔案名稱'),
+                    onChanged: (val) async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('video_filename', val);
+                    },
+                  ),
+                  const SizedBox(height: 15),
+
                   const Text('輸出資料夾設定:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
                   Row(
@@ -351,7 +374,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
 }
 
 // ==========================================
-// 🌟 分頁二：智慧無聲偵測 & 裁減 (含獨立記憶資料夾)
+// 🌟 分頁二：智慧無聲偵測 & 裁減 (含自訂檔名與記憶)
 // ==========================================
 class AudioTrimScreen extends StatefulWidget {
   const AudioTrimScreen({super.key});
@@ -363,30 +386,30 @@ class AudioTrimScreen extends StatefulWidget {
 class _AudioTrimScreenState extends State<AudioTrimScreen> {
   final TextEditingController _startController = TextEditingController(text: '00:00:00');
   final TextEditingController _endController = TextEditingController(text: '00:00:00'); 
+  final TextEditingController _fileNameController = TextEditingController(); // 💡 新增檔名控制器
   
   String? _inputPath;
   String? _inputName;
   bool _isProcessing = false;
   String _status = '請選擇要處理的檔案';
 
-  // 💡 音檔專屬的輸出資料夾變數
   String _outputDir = '/storage/emulated/0/Download';
 
   @override
   void initState() {
     super.initState();
-    _loadSavedDirectory();
+    _loadSavedData();
   }
 
-  // 💡 讀取上次存的音檔資料夾 (與影片的記憶分開)
-  Future<void> _loadSavedDirectory() async {
+  // 💡 讀取上次存的音檔資料夾與自訂檔名
+  Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _outputDir = prefs.getString('audio_output_dir') ?? '/storage/emulated/0/Download';
+      _fileNameController.text = prefs.getString('audio_filename') ?? '剪輯音檔';
     });
   }
 
-  // 💡 選擇並記憶新資料夾
   Future<void> _pickOutputDir() async {
     String? selectedDirectory = await FilePicker.platform.getDirectoryPath();
     if (selectedDirectory != null) {
@@ -514,7 +537,9 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
       splitTimes.add(totalDuration.toDouble());
 
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      // 💡 取得使用者輸入的檔名
+      String baseName = _fileNameController.text.trim();
+      if (baseName.isEmpty) baseName = '剪輯音檔';
 
       for (int i = 0; i < splitTimes.length - 1; i++) {
         setState(() {
@@ -525,9 +550,10 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         double chunkDuration = splitTimes[i + 1] - chunkRelativeStart;
         double absoluteStart = startSec + chunkRelativeStart; 
         
-        String partName = (i + 1).toString().padLeft(2, '0');
-        // 💡 輸出路徑改用自訂的 _outputDir
-        final outputPath = '$_outputDir/信息_${timestamp}_part$partName.mp3';
+        // 💡 完美命名邏輯："檔名part1.mp3", "檔名part2.mp3"
+        String partName = (i + 1).toString();
+        final outputPath = '$_outputDir/${baseName}part$partName.mp3';
+        if (await File(outputPath).exists()) await File(outputPath).delete();
 
         String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
         final sliceSession = await FFmpegKit.execute(sliceCmd);
@@ -560,17 +586,18 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     });
 
     try {
-      final timestamp = DateTime.now().millisecondsSinceEpoch;
-      // 💡 輸出路徑改用自訂的 _outputDir
-      final outputPath = '$_outputDir/剪輯音檔_$timestamp.mp3';
-
+      // 💡 取得使用者輸入的單一檔名
+      String baseName = _fileNameController.text.trim();
+      if (baseName.isEmpty) baseName = '剪輯音檔';
+      
+      final outputPath = '$_outputDir/$baseName.mp3';
       if (await File(outputPath).exists()) await File(outputPath).delete();
 
       final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
 
       await FFmpegKit.execute(command).then((session) async {
         if (ReturnCode.isSuccess(await session.getReturnCode())) {
-          setState(() => _status = '🎉 裁減成功！\n檔案已存入:\n$_outputDir');
+          setState(() => _status = '🎉 裁減成功！\n檔名: $baseName.mp3\n已存入:\n$_outputDir');
         } else {
           final failStackTrace = await session.getFailStackTrace();
           setState(() => _status = '❌ 處理失敗。\n$failStackTrace');
@@ -630,10 +657,22 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                     ],
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 30),
                   const Divider(),
                   
-                  // 💡 音檔輸出資料夾選擇區塊
+                  // 💡 新增：輸出檔名設定 (附帶記憶功能)
+                  const Text('3. 輸出檔名設定', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _fileNameController,
+                    decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 10), border: OutlineInputBorder(), hintText: '請輸入檔案名稱'),
+                    onChanged: (val) async {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setString('audio_filename', val);
+                    },
+                  ),
+                  const SizedBox(height: 15),
+
                   const Text('輸出資料夾設定:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
                   Row(
