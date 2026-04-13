@@ -68,7 +68,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
 }
 
 // ==========================================
-// 🌟 分頁一：文字轉影片 (含自訂檔名與記憶)
+// 🌟 分頁一：文字轉影片
 // ==========================================
 class VideoGenScreen extends StatefulWidget {
   const VideoGenScreen({super.key});
@@ -80,7 +80,7 @@ class VideoGenScreen extends StatefulWidget {
 class _VideoGenScreenState extends State<VideoGenScreen> {
   final TextEditingController _textController = TextEditingController();
   final TextEditingController _fpsController = TextEditingController(text: '2'); 
-  final TextEditingController _fileNameController = TextEditingController(); // 💡 新增檔名控制器
+  final TextEditingController _fileNameController = TextEditingController();
   
   double _fontSize = 25.0; 
   String _resolution = '1080p';
@@ -99,15 +99,14 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSavedData(); // 一開App就讀取所有記憶
+    _loadSavedData(); 
   }
 
-  // 💡 讀取上次存的文字、檔名和資料夾
   Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _outputDir = prefs.getString('video_output_dir') ?? '/storage/emulated/0/Download';
-      _textController.text = prefs.getString('video_text') ?? '測試'; // 預設改為「測試」
+      _textController.text = prefs.getString('video_text') ?? '測試';
       _fileNameController.text = prefs.getString('video_filename') ?? '輸出影片';
     });
   }
@@ -189,11 +188,10 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
       } catch (e) {}
       int totalMs = (durationInSeconds * 1000).toInt();
 
-      // 💡 組合自訂檔名 (如果使用者清空，就給個預設值)
       String baseName = _fileNameController.text.trim();
       if (baseName.isEmpty) baseName = '輸出影片';
       final outputVideoPath = '$_outputDir/$baseName.mp4';
-      if (await File(outputVideoPath).exists()) await File(outputVideoPath).delete(); // 若有同名檔案則覆蓋
+      if (await File(outputVideoPath).exists()) await File(outputVideoPath).delete();
 
       String filter = 'scale=${videoWidth.toInt()}:${videoHeight.toInt()}:force_original_aspect_ratio=decrease,pad=${videoWidth.toInt()}:${videoHeight.toInt()}:(ow-iw)/2:(oh-ih)/2:color=black';
       int gopValue = (fps == 1) ? 300 : fps * 2;
@@ -274,7 +272,6 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // 💡 修改：輸入文字時，即時更新記憶體
                   TextField(
                     controller: _textController, 
                     decoration: const InputDecoration(labelText: '輸入影片文字', border: OutlineInputBorder()), 
@@ -340,7 +337,6 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
                   const SizedBox(height: 20),
                   const Divider(),
                   
-                  // 💡 新增：儲存檔名輸入框 (附帶自動記憶)
                   const Text('輸出檔名:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 5),
                   TextField(
@@ -374,7 +370,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
 }
 
 // ==========================================
-// 🌟 分頁二：智慧無聲偵測 & 裁減 (含自訂檔名與記憶)
+// 🌟 分頁二：智慧無聲偵測 & 裁減 (含音質設定)
 // ==========================================
 class AudioTrimScreen extends StatefulWidget {
   const AudioTrimScreen({super.key});
@@ -386,7 +382,7 @@ class AudioTrimScreen extends StatefulWidget {
 class _AudioTrimScreenState extends State<AudioTrimScreen> {
   final TextEditingController _startController = TextEditingController(text: '00:00:00');
   final TextEditingController _endController = TextEditingController(text: '00:00:00'); 
-  final TextEditingController _fileNameController = TextEditingController(); // 💡 新增檔名控制器
+  final TextEditingController _fileNameController = TextEditingController(); 
   
   String? _inputPath;
   String? _inputName;
@@ -394,6 +390,9 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
   String _status = '請選擇要處理的檔案';
 
   String _outputDir = '/storage/emulated/0/Download';
+  
+  // 💡 新增：音質變數
+  String _audioBitrate = '64k'; 
 
   @override
   void initState() {
@@ -401,12 +400,12 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     _loadSavedData();
   }
 
-  // 💡 讀取上次存的音檔資料夾與自訂檔名
   Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _outputDir = prefs.getString('audio_output_dir') ?? '/storage/emulated/0/Download';
       _fileNameController.text = prefs.getString('audio_filename') ?? '剪輯音檔';
+      _audioBitrate = prefs.getString('audio_bitrate') ?? '64k'; // 讀取音質記憶
     });
   }
 
@@ -537,7 +536,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
       splitTimes.add(totalDuration.toDouble());
 
-      // 💡 取得使用者輸入的檔名
       String baseName = _fileNameController.text.trim();
       if (baseName.isEmpty) baseName = '剪輯音檔';
 
@@ -550,12 +548,12 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         double chunkDuration = splitTimes[i + 1] - chunkRelativeStart;
         double absoluteStart = startSec + chunkRelativeStart; 
         
-        // 💡 完美命名邏輯："檔名part1.mp3", "檔名part2.mp3"
         String partName = (i + 1).toString();
         final outputPath = '$_outputDir/${baseName}part$partName.mp3';
         if (await File(outputPath).exists()) await File(outputPath).delete();
 
-        String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
+        // 💡 套用使用者選擇的碼率 (如 64k, 32k)
+        String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a $_audioBitrate "$outputPath"';
         final sliceSession = await FFmpegKit.execute(sliceCmd);
         
         if (!ReturnCode.isSuccess(await sliceSession.getReturnCode())) {
@@ -586,14 +584,14 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     });
 
     try {
-      // 💡 取得使用者輸入的單一檔名
       String baseName = _fileNameController.text.trim();
       if (baseName.isEmpty) baseName = '剪輯音檔';
       
       final outputPath = '$_outputDir/$baseName.mp3';
       if (await File(outputPath).exists()) await File(outputPath).delete();
 
-      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
+      // 💡 套用使用者選擇的碼率
+      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a $_audioBitrate "$outputPath"';
 
       await FFmpegKit.execute(command).then((session) async {
         if (ReturnCode.isSuccess(await session.getReturnCode())) {
@@ -660,12 +658,36 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   const SizedBox(height: 30),
                   const Divider(),
                   
-                  // 💡 新增：輸出檔名設定 (附帶記憶功能)
-                  const Text('3. 輸出檔名設定', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('3. 輸出設定', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
+                  
+                  // 💡 新增：音質下拉選單
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text('輸出音質 (碼率):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      DropdownButton<String>(
+                        value: _audioBitrate,
+                        items: const [
+                          DropdownMenuItem(value: '128k', child: Text('128k (高品質/大檔)')),
+                          DropdownMenuItem(value: '64k', child: Text('64k (清晰人聲/推薦)')),
+                          DropdownMenuItem(value: '32k', child: Text('32k (極限壓縮/小檔)')),
+                        ],
+                        onChanged: (v) async {
+                          if (v != null) {
+                            setState(() => _audioBitrate = v);
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setString('audio_bitrate', v);
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+
                   TextField(
                     controller: _fileNameController,
-                    decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 10), border: OutlineInputBorder(), hintText: '請輸入檔案名稱'),
+                    decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 10), border: OutlineInputBorder(), hintText: '請輸入檔案名稱 (免打 .mp3)'),
                     onChanged: (val) async {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setString('audio_filename', val);
@@ -687,14 +709,14 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   ElevatedButton(
                     onPressed: _normalTrim,
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 15)),
-                    child: const Text('單純裁減一刀 (單軌 128k)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: const Text('單純裁減一刀 (單軌瘦身)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(height: 15),
                   
                   ElevatedButton(
                     onPressed: _smartSplitTrim,
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
-                    child: const Text('智慧無聲分割 (每20分/單軌 128k)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: const Text('智慧無聲分割 (每20分/單軌瘦身)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                   
                   const SizedBox(height: 20),
