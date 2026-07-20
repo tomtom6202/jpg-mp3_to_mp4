@@ -33,19 +33,23 @@ jobs:
       - name: Fix Android Settings & Build
         run: |
           cd clean_app
-          # 💡 新增：自動安裝「記憶體」套件，用來記住你的資料夾！
           flutter pub add shared_preferences
           
           sed -i 's/android:label="[^"]*"/android:label="召會信息編輯"/g' android/app/src/main/AndroidManifest.xml
           
           if [ -f android/app/build.gradle ]; then
+            # 💡 破解套件版本衝突的魔法：強制將 compileSdk 升級到 36！
+            sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle
             sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
           fi
           if [ -f android/app/build.gradle.kts ]; then
+            # 💡 針對新版 Kotlin 設定檔也同步強制升級 compileSdk 到 36！
+            sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle.kts
             sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle.kts
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
           fi
+          
           flutter pub get
           flutter build apk --debug --split-per-abi
 
