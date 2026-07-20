@@ -11,6 +11,7 @@ import 'package:screenshot/screenshot.dart';
 import 'package:gal/gal.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+
 void main() {
   runApp(const MyApp());
 }
