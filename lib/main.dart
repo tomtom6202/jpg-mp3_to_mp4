@@ -59,7 +59,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
         },
         items: const [
           BottomNavigationBarItem(icon: Icon(Icons.video_library), label: '文字轉影片'),
-          BottomNavigationBarItem(icon: Icon(Icons.content_cut), label: '音影裁減 (MP3)'),
+          BottomNavigationBarItem(icon: Icon(Icons.content_cut), label: '音影裁減 (多格式)'),
         ],
         selectedItemColor: Colors.greenAccent,
       ),
@@ -68,7 +68,7 @@ class _MainTabScreenState extends State<MainTabScreen> {
 }
 
 // ==========================================
-// 🌟 分頁一：文字轉影片
+// 🌟 分頁一：文字轉影片 (維持不變)
 // ==========================================
 class VideoGenScreen extends StatefulWidget {
   const VideoGenScreen({super.key});
@@ -370,7 +370,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
 }
 
 // ==========================================
-// 🌟 分頁二：智慧無聲偵測 & 裁減
+// 🌟 分頁二：智慧無聲偵測 & 裁減 (多格式自由切換版)
 // ==========================================
 class AudioTrimScreen extends StatefulWidget {
   const AudioTrimScreen({super.key});
@@ -391,6 +391,10 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
   String _status = '請選擇要處理的檔案';
 
   String _outputDir = '/storage/emulated/0/Download';
+  
+  // 💡 新增：格式選擇變數與選項
+  String _selectedFormat = 'm4a'; 
+  final List<String> _formatOptions = ['m4a', 'mp3', 'wav'];
 
   @override
   void initState() {
@@ -403,7 +407,9 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     setState(() {
       _outputDir = prefs.getString('audio_output_dir') ?? '/storage/emulated/0/Download';
       _fileNameController.text = prefs.getString('audio_filename') ?? '剪輯音檔';
-      _splitDurationController.text = prefs.getString('audio_split_duration') ?? '15';
+      _splitDurationController.text = prefs.getString('audio_split_duration') ?? '14';
+      _selectedFormat = prefs.getString('audio_output_format') ?? 'm4a';
+      if (!_formatOptions.contains(_selectedFormat)) _selectedFormat = 'm4a'; // 確保資料合法
     });
   }
 
@@ -471,6 +477,19 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     return 0;
   }
 
+  // 💡 新增：動態產生編碼器指令
+  String _getCodecSettings() {
+    switch (_selectedFormat) {
+      case 'mp3':
+        return '-c:a libmp3lame -b:a 128k';
+      case 'wav':
+        return '-c:a pcm_s16le';
+      case 'm4a':
+      default:
+        return '-c:a aac -b:a 128k';
+    }
+  }
+
   Future<void> _smartSplitTrim() async {
     if (_inputPath == null) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('請先選擇檔案')));
@@ -485,8 +504,8 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       return;
     }
 
-    int splitDurationMin = int.tryParse(_splitDurationController.text) ?? 15;
-    if (splitDurationMin <= 0) splitDurationMin = 15; 
+    int splitDurationMin = int.tryParse(_splitDurationController.text) ?? 14;
+    if (splitDurationMin <= 0) splitDurationMin = 14; 
     double splitIntervalSec = splitDurationMin * 60.0;
 
     setState(() {
@@ -528,7 +547,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
           }
         }
         
-        // 💡 關鍵修正：如果找不到無聲點被迫極限切割時，退後 1 秒鐘，不要剛好切在極限
         if (bestPoint == -1.0 || (bestPoint - lastCut) < 60.0) {
           bestPoint = maxAllowedCut - 1.0; 
         }
@@ -543,7 +561,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
 
       for (int i = 0; i < splitTimes.length - 1; i++) {
         setState(() {
-          _status = '🚀 階段三：正在輸出 Part ${i + 1} / ${splitTimes.length - 1} ...\n清除舊標籤，保證 CapCut 讀取成功！';
+          _status = '🚀 階段三：正在輸出 Part ${i + 1} / ${splitTimes.length - 1} ...\n(${( _selectedFormat.toUpperCase() )} 格式處理中)';
         });
 
         double chunkRelativeStart = splitTimes[i];
@@ -551,11 +569,14 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         double absoluteStart = startSec + chunkRelativeStart; 
         
         String partName = (i + 1).toString();
-        final outputPath = '$_outputDir/${baseName}part$partName.mp3';
+        // 💡 附檔名會根據你選擇的格式自動變化
+        final outputPath = '$_outputDir/${baseName}_part$partName.$_selectedFormat';
         if (await File(outputPath).exists()) await File(outputPath).delete();
 
-        // 💡 關鍵修正：加入 -map_metadata -1 徹底抹除原始長度標籤
-        String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -map_metadata -1 -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
+        // 💡 呼叫剛剛寫好的方法，獲取對應的編碼器指令
+        String codecCmd = _getCodecSettings();
+        String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -map_metadata -1 -vn -ac 1 $codecCmd "$outputPath"';
+        
         final sliceSession = await FFmpegKit.execute(sliceCmd);
         
         if (!ReturnCode.isSuccess(await sliceSession.getReturnCode())) {
@@ -564,7 +585,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
 
       setState(() {
-        _status = '🎉 智慧切割大成功！\n已解決 CapCut 幽靈時長問題\n共切成 ${splitTimes.length - 1} 個檔案\n已全部存入:\n$_outputDir';
+        _status = '🎉 智慧切割大成功！\n已全面轉為 ${_selectedFormat.toUpperCase()} 格式\n共切成 ${splitTimes.length - 1} 個檔案\n已全部存入:\n$_outputDir';
       });
 
     } catch (e) {
@@ -582,22 +603,22 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
 
     setState(() {
       _isProcessing = true;
-      _status = '正在裁減並轉成單軌 MP3...';
+      _status = '正在裁減並轉成 ${_selectedFormat.toUpperCase()}...';
     });
 
     try {
       String baseName = _fileNameController.text.trim();
       if (baseName.isEmpty) baseName = '剪輯音檔';
       
-      final outputPath = '$_outputDir/$baseName.mp3';
+      final outputPath = '$_outputDir/$baseName.$_selectedFormat';
       if (await File(outputPath).exists()) await File(outputPath).delete();
 
-      // 💡 關鍵修正：加入 -map_metadata -1 徹底抹除原始長度標籤
-      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -map_metadata -1 -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
+      String codecCmd = _getCodecSettings();
+      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -map_metadata -1 -vn -ac 1 $codecCmd "$outputPath"';
 
       await FFmpegKit.execute(command).then((session) async {
         if (ReturnCode.isSuccess(await session.getReturnCode())) {
-          setState(() => _status = '🎉 裁減成功！\n檔名: $baseName.mp3\n已存入:\n$_outputDir');
+          setState(() => _status = '🎉 裁減成功！\n檔名: $baseName.$_selectedFormat\n已存入:\n$_outputDir');
         } else {
           final failStackTrace = await session.getFailStackTrace();
           setState(() => _status = '❌ 處理失敗。\n$failStackTrace');
@@ -613,7 +634,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('音影裁減輸出 MP3')),
+      appBar: AppBar(title: const Text('音影裁減輸出中心 (多格式支援)')),
       body: _isProcessing
           ? Center(
               child: Padding(
@@ -638,7 +659,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   ElevatedButton.icon(
                     onPressed: _pickFile,
                     icon: const Icon(Icons.folder_open),
-                    label: Text(_inputName == null ? '選擇 MP3 或 MP4' : '重新選擇'),
+                    label: Text(_inputName == null ? '選擇影音檔案' : '重新選擇'),
                     style: ElevatedButton.styleFrom(padding: const EdgeInsets.symmetric(vertical: 12)),
                   ),
                   if (_inputName != null) ...[
@@ -660,8 +681,55 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   const SizedBox(height: 30),
                   const Divider(),
                   
-                  const Text('3. 輸出檔名與資料夾', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('3. 輸出設定', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
+                  
+                  // 💡 新增的下拉選單介面：切換格式
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.white10,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade700),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('音檔格式:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                        DropdownButtonHideUnderline(
+                          child: DropdownButton<String>(
+                            value: _selectedFormat,
+                            icon: const Icon(Icons.arrow_drop_down, color: Colors.greenAccent),
+                            dropdownColor: Colors.grey.shade900,
+                            items: _formatOptions.map((String format) {
+                              return DropdownMenuItem<String>(
+                                value: format,
+                                child: Text(format.toUpperCase(), style: const TextStyle(fontWeight: FontWeight.bold)),
+                              );
+                            }).toList(),
+                            onChanged: (String? newValue) async {
+                              if (newValue != null) {
+                                setState(() {
+                                  _selectedFormat = newValue;
+                                });
+                                final prefs = await SharedPreferences.getInstance();
+                                await prefs.setString('audio_output_format', newValue);
+                                
+                                // 貼心提示
+                                String msg = '已切換為 ${newValue.toUpperCase()}';
+                                if (newValue == 'm4a') msg += ' (推薦！體積小且相容 CapCut)';
+                                if (newValue == 'mp3') msg += ' (注意：CapCut 可能會誤判長度)';
+                                if (newValue == 'wav') msg += ' (注意：無損音質，檔案體積較大)';
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg), duration: const Duration(seconds: 3)));
+                              }
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 15),
+
                   TextField(
                     controller: _fileNameController,
                     decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 10), border: OutlineInputBorder(), hintText: '請輸入檔案名稱'),
@@ -686,7 +754,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   ElevatedButton(
                     onPressed: _normalTrim,
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 15)),
-                    child: const Text('單純裁減一刀 (單軌 128k)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: const Text('單純裁減一刀 (依上方格式單軌輸出)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(height: 15),
                   
