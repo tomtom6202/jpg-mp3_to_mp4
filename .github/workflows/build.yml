@@ -35,36 +35,35 @@ jobs:
           cd clean_app
           flutter pub add shared_preferences
           
-          # 換上你的專屬招牌名稱
+          # 更換 App 名稱
           sed -i 's/android:label="[^"]*"/android:label="召會信息編輯"/g' android/app/src/main/AndroidManifest.xml
           
-          # 升級 App 本身的編譯 SDK 到 36
+          # 升級 App 本身的編譯 SDK 到 36，並加入 NDK 支援
           if [ -f android/app/build.gradle ]; then
             sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle
             sed -i 's/flutter.targetSdkVersion/36/g' android/app/build.gradle
             sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
           fi
-          
-          # 💡 終極暴力解法：強制把所有外掛套件 (包含固執的 file_picker) 全部綁架到 API 36！
-          cat <<EOF >> android/build.gradle
-          
-          subprojects {
-              afterEvaluate { project ->
-                  if (project.hasProperty('android')) {
-                      project.android {
-                          compileSdkVersion 36
-                      }
-                  }
-              }
-          }
-          EOF
+          if [ -f android/app/build.gradle.kts ]; then
+            sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle.kts
+            sed -i 's/flutter.targetSdkVersion/36/g' android/app/build.gradle.kts
+            sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle.kts
+            sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
+          fi
           
           flutter pub get
-          flutter build apk --debug --split-per-abi
+          
+          # 💡 終極安全解法：直接修改快取資料夾中所有套件的 compileSdk 版本為 36
+          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle*" -exec sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 36/g' {} +
+          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle*" -exec sed -i 's/compileSdk = [0-9]*/compileSdk = 36/g' {} +
+          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle*" -exec sed -i 's/compileSdk [0-9]*/compileSdk 36/g' {} +
+          
+          # 使用 release 模式編譯單一 APK，確保檔案路徑正確
+          flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: My-Video-App-APK
-          path: clean_app/build/app/outputs/flutter-apk/app-arm64-v8a-debug.apk
+          path: clean_app/build/app/outputs/flutter-apk/app-release.apk
