@@ -383,7 +383,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
   final TextEditingController _startController = TextEditingController(text: '00:00:00');
   final TextEditingController _endController = TextEditingController(text: '00:00:00'); 
   final TextEditingController _fileNameController = TextEditingController(); 
-  // 💡 新增：分割時間(分鐘)控制器
   final TextEditingController _splitDurationController = TextEditingController(); 
   
   String? _inputPath;
@@ -404,7 +403,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     setState(() {
       _outputDir = prefs.getString('audio_output_dir') ?? '/storage/emulated/0/Download';
       _fileNameController.text = prefs.getString('audio_filename') ?? '剪輯音檔';
-      _splitDurationController.text = prefs.getString('audio_split_duration') ?? '20'; // 預設20分鐘
+      _splitDurationController.text = prefs.getString('audio_split_duration') ?? '15';
     });
   }
 
@@ -486,9 +485,8 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       return;
     }
 
-    // 💡 取得使用者設定的分割分鐘數，並轉換為秒數
-    int splitDurationMin = int.tryParse(_splitDurationController.text) ?? 20;
-    if (splitDurationMin <= 0) splitDurationMin = 20; // 防止輸入0或負數
+    int splitDurationMin = int.tryParse(_splitDurationController.text) ?? 15;
+    if (splitDurationMin <= 0) splitDurationMin = 15; 
     double splitIntervalSec = splitDurationMin * 60.0;
 
     setState(() {
@@ -514,30 +512,32 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
 
       setState(() {
-        _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在計算最佳 $splitDurationMin 分鐘切割位置...';
+        _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在嚴格計算 $\le$ $splitDurationMin 分鐘的切割位置...';
       });
 
+      // 💡 關鍵修正：嚴格不大於設定時間的切割邏輯
       List<double> splitTimes = [0.0];
-      double currentTarget = splitIntervalSec;
+      double lastCut = 0.0;
       
-      while (currentTarget < totalDuration) {
-        double bestPoint = currentTarget;
-        double minDiff = 999999.0;
+      while (lastCut + splitIntervalSec < totalDuration) {
+        double maxAllowedCut = lastCut + splitIntervalSec;
+        double bestPoint = -1.0;
         
+        // 找出在允許範圍內 [lastCut ~ maxAllowedCut]，最接近極限時間的無聲點
         for (double p in silencePoints) {
-          if ((p - currentTarget).abs() < minDiff) {
-            minDiff = (p - currentTarget).abs();
-            bestPoint = p;
+          if (p > lastCut && p <= maxAllowedCut) {
+            bestPoint = p; // 因為迴圈從頭跑到尾，最後留下來的就是時間最大的符合條件點
           }
         }
         
-        // 如果無聲點離目標時間超過 5 分鐘 (300秒)，就硬切在目標時間
-        if (minDiff > 300.0) {
-          bestPoint = currentTarget;
+        // 如果在這個範圍內找不到無聲點，或者找到的點太短(小於60秒)避免切出垃圾檔案
+        // 我們就直接在極限時間點強制切一刀
+        if (bestPoint == -1.0 || (bestPoint - lastCut) < 60.0) {
+          bestPoint = maxAllowedCut;
         }
         
         splitTimes.add(bestPoint);
-        currentTarget += splitIntervalSec;
+        lastCut = bestPoint;
       }
       splitTimes.add(totalDuration.toDouble());
 
@@ -566,7 +566,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
 
       setState(() {
-        _status = '🎉 智慧切割大成功！\n共切成 ${splitTimes.length - 1} 個檔案\n已全部存入:\n$_outputDir';
+        _status = '🎉 智慧切割大成功！\n每段皆嚴格 $\le$ $splitDurationMin 分鐘\n共切成 ${splitTimes.length - 1} 個檔案\n已全部存入:\n$_outputDir';
       });
 
     } catch (e) {
@@ -691,7 +691,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   ),
                   const SizedBox(height: 15),
                   
-                  // 💡 新增：分割時間設定輸入框與按鈕組合在一起
                   Container(
                     padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
@@ -703,7 +702,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                       children: [
                         Row(
                           children: [
-                            const Text('設定智慧分割長度 (分鐘):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                            const Text('設定智慧分割上限 (分鐘):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
                             const SizedBox(width: 10),
                             SizedBox(
                               width: 60,
@@ -724,7 +723,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                         ElevatedButton(
                           onPressed: _smartSplitTrim,
                           style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
-                          child: const Text('開始智慧無聲分割', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          child: const Text('開始嚴格智慧分割', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
