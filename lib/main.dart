@@ -512,10 +512,9 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
 
       setState(() {
-        _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在嚴格計算 $\le$ $splitDurationMin 分鐘的切割位置...';
+        _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在嚴格計算 <= $splitDurationMin 分鐘的切割位置...';
       });
 
-      // 💡 關鍵修正：嚴格不大於設定時間的切割邏輯
       List<double> splitTimes = [0.0];
       double lastCut = 0.0;
       
@@ -523,15 +522,12 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         double maxAllowedCut = lastCut + splitIntervalSec;
         double bestPoint = -1.0;
         
-        // 找出在允許範圍內 [lastCut ~ maxAllowedCut]，最接近極限時間的無聲點
         for (double p in silencePoints) {
           if (p > lastCut && p <= maxAllowedCut) {
-            bestPoint = p; // 因為迴圈從頭跑到尾，最後留下來的就是時間最大的符合條件點
+            bestPoint = p;
           }
         }
         
-        // 如果在這個範圍內找不到無聲點，或者找到的點太短(小於60秒)避免切出垃圾檔案
-        // 我們就直接在極限時間點強制切一刀
         if (bestPoint == -1.0 || (bestPoint - lastCut) < 60.0) {
           bestPoint = maxAllowedCut;
         }
@@ -566,7 +562,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
 
       setState(() {
-        _status = '🎉 智慧切割大成功！\n每段皆嚴格 $\le$ $splitDurationMin 分鐘\n共切成 ${splitTimes.length - 1} 個檔案\n已全部存入:\n$_outputDir';
+        _status = '🎉 智慧切割大成功！\n每段皆嚴格 <= $splitDurationMin 分鐘\n共切成 ${splitTimes.length - 1} 個檔案\n已全部存入:\n$_outputDir';
       });
 
     } catch (e) {
