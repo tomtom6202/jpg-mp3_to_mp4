@@ -512,7 +512,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
 
       setState(() {
-        _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在嚴格計算 <= $splitDurationMin 分鐘的切割位置...';
+        _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在嚴格計算切割位置...';
       });
 
       List<double> splitTimes = [0.0];
@@ -528,8 +528,9 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
           }
         }
         
+        // 💡 關鍵修正：如果找不到無聲點被迫極限切割時，退後 1 秒鐘，不要剛好切在極限
         if (bestPoint == -1.0 || (bestPoint - lastCut) < 60.0) {
-          bestPoint = maxAllowedCut;
+          bestPoint = maxAllowedCut - 1.0; 
         }
         
         splitTimes.add(bestPoint);
@@ -542,7 +543,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
 
       for (int i = 0; i < splitTimes.length - 1; i++) {
         setState(() {
-          _status = '🚀 階段三：正在輸出 Part ${i + 1} / ${splitTimes.length - 1} ...\n這會需要幾分鐘的時間';
+          _status = '🚀 階段三：正在輸出 Part ${i + 1} / ${splitTimes.length - 1} ...\n清除舊標籤，保證 CapCut 讀取成功！';
         });
 
         double chunkRelativeStart = splitTimes[i];
@@ -553,7 +554,8 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         final outputPath = '$_outputDir/${baseName}part$partName.mp3';
         if (await File(outputPath).exists()) await File(outputPath).delete();
 
-        String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
+        // 💡 關鍵修正：加入 -map_metadata -1 徹底抹除原始長度標籤
+        String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -map_metadata -1 -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
         final sliceSession = await FFmpegKit.execute(sliceCmd);
         
         if (!ReturnCode.isSuccess(await sliceSession.getReturnCode())) {
@@ -562,7 +564,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
 
       setState(() {
-        _status = '🎉 智慧切割大成功！\n每段皆嚴格 <= $splitDurationMin 分鐘\n共切成 ${splitTimes.length - 1} 個檔案\n已全部存入:\n$_outputDir';
+        _status = '🎉 智慧切割大成功！\n已解決 CapCut 幽靈時長問題\n共切成 ${splitTimes.length - 1} 個檔案\n已全部存入:\n$_outputDir';
       });
 
     } catch (e) {
@@ -590,7 +592,8 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       final outputPath = '$_outputDir/$baseName.mp3';
       if (await File(outputPath).exists()) await File(outputPath).delete();
 
-      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
+      // 💡 關鍵修正：加入 -map_metadata -1 徹底抹除原始長度標籤
+      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -map_metadata -1 -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
 
       await FFmpegKit.execute(command).then((session) async {
         if (ReturnCode.isSuccess(await session.getReturnCode())) {
