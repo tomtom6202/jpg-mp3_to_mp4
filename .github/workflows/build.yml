@@ -35,21 +35,30 @@ jobs:
           cd clean_app
           flutter pub add shared_preferences
           
+          # 換上你的專屬招牌名稱
           sed -i 's/android:label="[^"]*"/android:label="召會信息編輯"/g' android/app/src/main/AndroidManifest.xml
           
-          # 💡 終極解法：強制將 Android 編譯版本 (compileSdk) 升級為 36！
+          # 升級 App 本身的編譯 SDK 到 36
           if [ -f android/app/build.gradle ]; then
             sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle
             sed -i 's/flutter.targetSdkVersion/36/g' android/app/build.gradle
             sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
             sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
           fi
-          if [ -f android/app/build.gradle.kts ]; then
-            sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle.kts
-            sed -i 's/flutter.targetSdkVersion/36/g' android/app/build.gradle.kts
-            sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle.kts
-            sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle.kts
-          fi
+          
+          # 💡 終極暴力解法：強制把所有外掛套件 (包含固執的 file_picker) 全部綁架到 API 36！
+          cat <<EOF >> android/build.gradle
+          
+          subprojects {
+              afterEvaluate { project ->
+                  if (project.hasProperty('android')) {
+                      project.android {
+                          compileSdkVersion 36
+                      }
+                  }
+              }
+          }
+          EOF
           
           flutter pub get
           flutter build apk --debug --split-per-abi
