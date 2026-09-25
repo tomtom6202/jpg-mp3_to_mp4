@@ -80,7 +80,7 @@ class VideoGenScreen extends StatefulWidget {
 class _VideoGenScreenState extends State<VideoGenScreen> {
   final TextEditingController _textController = TextEditingController();
   final TextEditingController _fpsController = TextEditingController(text: '2'); 
-  final TextEditingController _fileNameController = TextEditingController();
+  final TextEditingController _fileNameController = TextEditingController(); 
   
   double _fontSize = 25.0; 
   String _resolution = '1080p';
@@ -99,14 +99,14 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
   @override
   void initState() {
     super.initState();
-    _loadSavedData(); 
+    _loadSavedData();
   }
 
   Future<void> _loadSavedData() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _outputDir = prefs.getString('video_output_dir') ?? '/storage/emulated/0/Download';
-      _textController.text = prefs.getString('video_text') ?? '測試';
+      _textController.text = prefs.getString('video_text') ?? '測試'; 
       _fileNameController.text = prefs.getString('video_filename') ?? '輸出影片';
     });
   }
@@ -248,7 +248,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('文字轉靜態影片 (Designed by Thomas)')),
+      appBar: AppBar(title: const Text('文字轉靜態影片')),
       body: _isProcessing
           ? Center(
               child: Padding(
@@ -370,7 +370,7 @@ class _VideoGenScreenState extends State<VideoGenScreen> {
 }
 
 // ==========================================
-// 🌟 分頁二：智慧無聲偵測 & 裁減 (含音質設定)
+// 🌟 分頁二：智慧無聲偵測 & 裁減
 // ==========================================
 class AudioTrimScreen extends StatefulWidget {
   const AudioTrimScreen({super.key});
@@ -383,6 +383,8 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
   final TextEditingController _startController = TextEditingController(text: '00:00:00');
   final TextEditingController _endController = TextEditingController(text: '00:00:00'); 
   final TextEditingController _fileNameController = TextEditingController(); 
+  // 💡 新增：分割時間(分鐘)控制器
+  final TextEditingController _splitDurationController = TextEditingController(); 
   
   String? _inputPath;
   String? _inputName;
@@ -390,9 +392,6 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
   String _status = '請選擇要處理的檔案';
 
   String _outputDir = '/storage/emulated/0/Download';
-  
-  // 💡 新增：音質變數
-  String _audioBitrate = '64k'; 
 
   @override
   void initState() {
@@ -405,7 +404,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
     setState(() {
       _outputDir = prefs.getString('audio_output_dir') ?? '/storage/emulated/0/Download';
       _fileNameController.text = prefs.getString('audio_filename') ?? '剪輯音檔';
-      _audioBitrate = prefs.getString('audio_bitrate') ?? '64k'; // 讀取音質記憶
+      _splitDurationController.text = prefs.getString('audio_split_duration') ?? '20'; // 預設20分鐘
     });
   }
 
@@ -487,9 +486,14 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       return;
     }
 
+    // 💡 取得使用者設定的分割分鐘數，並轉換為秒數
+    int splitDurationMin = int.tryParse(_splitDurationController.text) ?? 20;
+    if (splitDurationMin <= 0) splitDurationMin = 20; // 防止輸入0或負數
+    double splitIntervalSec = splitDurationMin * 60.0;
+
     setState(() {
       _isProcessing = true;
-      _status = '🔍 階段一：正在雷達掃描無聲區段...\n(90分鐘音檔大約需 1~2 分鐘，請耐心等候)';
+      _status = '🔍 階段一：正在雷達掃描無聲區段...\n(較長音檔大約需 1~2 分鐘，請耐心等候)';
     });
 
     try {
@@ -510,11 +514,11 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       }
 
       setState(() {
-        _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在計算最佳 20 分鐘切割位置...';
+        _status = '⚙️ 階段二：掃描完成，找到 ${silencePoints.length} 個無聲點！\n正在計算最佳 $splitDurationMin 分鐘切割位置...';
       });
 
       List<double> splitTimes = [0.0];
-      double currentTarget = 1200.0;
+      double currentTarget = splitIntervalSec;
       
       while (currentTarget < totalDuration) {
         double bestPoint = currentTarget;
@@ -527,12 +531,13 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
           }
         }
         
+        // 如果無聲點離目標時間超過 5 分鐘 (300秒)，就硬切在目標時間
         if (minDiff > 300.0) {
           bestPoint = currentTarget;
         }
         
         splitTimes.add(bestPoint);
-        currentTarget += 1200.0;
+        currentTarget += splitIntervalSec;
       }
       splitTimes.add(totalDuration.toDouble());
 
@@ -552,8 +557,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
         final outputPath = '$_outputDir/${baseName}part$partName.mp3';
         if (await File(outputPath).exists()) await File(outputPath).delete();
 
-        // 💡 套用使用者選擇的碼率 (如 64k, 32k)
-        String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a $_audioBitrate "$outputPath"';
+        String sliceCmd = '-ss $absoluteStart -t $chunkDuration -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
         final sliceSession = await FFmpegKit.execute(sliceCmd);
         
         if (!ReturnCode.isSuccess(await sliceSession.getReturnCode())) {
@@ -590,8 +594,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
       final outputPath = '$_outputDir/$baseName.mp3';
       if (await File(outputPath).exists()) await File(outputPath).delete();
 
-      // 💡 套用使用者選擇的碼率
-      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a $_audioBitrate "$outputPath"';
+      final command = '-ss ${_startController.text} -to ${_endController.text} -i "$_inputPath" -vn -ac 1 -c:a libmp3lame -b:a 128k "$outputPath"';
 
       await FFmpegKit.execute(command).then((session) async {
         if (ReturnCode.isSuccess(await session.getReturnCode())) {
@@ -611,7 +614,7 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('音影裁減輸出 MP3 (Designed by Thomas)')),
+      appBar: AppBar(title: const Text('音影裁減輸出 MP3')),
       body: _isProcessing
           ? Center(
               child: Padding(
@@ -658,36 +661,11 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   const SizedBox(height: 30),
                   const Divider(),
                   
-                  const Text('3. 輸出設定', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                  const Text('3. 輸出檔名與資料夾', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                   const SizedBox(height: 10),
-                  
-                  // 💡 新增：音質下拉選單
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('輸出音質 (碼率):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                      DropdownButton<String>(
-                        value: _audioBitrate,
-                        items: const [
-                          DropdownMenuItem(value: '128k', child: Text('128k (高品質/大檔)')),
-                          DropdownMenuItem(value: '64k', child: Text('64k (清晰人聲/推薦)')),
-                          DropdownMenuItem(value: '32k', child: Text('32k (極限壓縮/小檔)')),
-                        ],
-                        onChanged: (v) async {
-                          if (v != null) {
-                            setState(() => _audioBitrate = v);
-                            final prefs = await SharedPreferences.getInstance();
-                            await prefs.setString('audio_bitrate', v);
-                          }
-                        },
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-
                   TextField(
                     controller: _fileNameController,
-                    decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 10), border: OutlineInputBorder(), hintText: '請輸入檔案名稱 (免打 .mp3)'),
+                    decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 12, horizontal: 10), border: OutlineInputBorder(), hintText: '請輸入檔案名稱'),
                     onChanged: (val) async {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setString('audio_filename', val);
@@ -695,10 +673,10 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   ),
                   const SizedBox(height: 15),
 
-                  const Text('輸出資料夾設定:', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 5),
                   Row(
                     children: [
+                      const Text('輸出路徑:', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(width: 8),
                       Expanded(child: Text(_outputDir, style: const TextStyle(color: Colors.grey, fontSize: 12), overflow: TextOverflow.ellipsis)),
                       ElevatedButton.icon(onPressed: _pickOutputDir, icon: const Icon(Icons.folder, size: 16), label: const Text('更改')),
                     ],
@@ -709,14 +687,47 @@ class _AudioTrimScreenState extends State<AudioTrimScreen> {
                   ElevatedButton(
                     onPressed: _normalTrim,
                     style: ElevatedButton.styleFrom(backgroundColor: Colors.orangeAccent, foregroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 15)),
-                    child: const Text('單純裁減一刀 (單軌瘦身)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    child: const Text('單純裁減一刀 (單軌 128k)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
                   ),
                   const SizedBox(height: 15),
                   
-                  ElevatedButton(
-                    onPressed: _smartSplitTrim,
-                    style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
-                    child: const Text('智慧無聲分割 (每20分/單軌瘦身)', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                  // 💡 新增：分割時間設定輸入框與按鈕組合在一起
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blueAccent.withOpacity(0.5)),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Row(
+                          children: [
+                            const Text('設定智慧分割長度 (分鐘):', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                            const SizedBox(width: 10),
+                            SizedBox(
+                              width: 60,
+                              child: TextField(
+                                controller: _splitDurationController,
+                                keyboardType: TextInputType.number,
+                                textAlign: TextAlign.center,
+                                decoration: const InputDecoration(isDense: true, contentPadding: EdgeInsets.symmetric(vertical: 8, horizontal: 8), border: OutlineInputBorder()),
+                                onChanged: (val) async {
+                                  final prefs = await SharedPreferences.getInstance();
+                                  await prefs.setString('audio_split_duration', val);
+                                },
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 15),
+                        ElevatedButton(
+                          onPressed: _smartSplitTrim,
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent, foregroundColor: Colors.white, padding: const EdgeInsets.symmetric(vertical: 15)),
+                          child: const Text('開始智慧無聲分割', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                        ),
+                      ],
+                    ),
                   ),
                   
                   const SizedBox(height: 20),
