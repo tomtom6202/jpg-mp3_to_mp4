@@ -38,15 +38,13 @@ jobs:
           # 更換 App 名稱為你專屬的名稱
           sed -i 's/android:label="[^"]*"/android:label="召會信息編輯"/g' android/app/src/main/AndroidManifest.xml
           
-          # 💡 解法一：依照錯誤訊息指示，關閉 AGP 9+ 的 newDsl 檢查，避免語法衝突
-          echo "android.newDsl=false" >> android/gradle.properties
-          
-          # 💡 解法二：使用最安全的官方設定檔，將所有套件的 SDK 強制設定為 36，不再破壞檔案
-          echo "flutter.compileSdkVersion=36" >> android/local.properties
-          echo "flutter.targetSdkVersion=36" >> android/local.properties
-          echo "flutter.minSdkVersion=24" >> android/local.properties
-          
-          # 確保主程式使用正確的設定，並加入 NDK 避免遺失錯誤
+          # 確保主 App 使用 SDK 36
+          if [ -f android/app/build.gradle ]; then
+            sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle
+            sed -i 's/flutter.targetSdkVersion/36/g' android/app/build.gradle
+            sed -i 's/flutter.minSdkVersion/24/g' android/app/build.gradle
+            sed -i '/android {/a \    ndkVersion = "27.0.12077973"' android/app/build.gradle
+          fi
           if [ -f android/app/build.gradle.kts ]; then
             sed -i 's/flutter.compileSdkVersion/36/g' android/app/build.gradle.kts
             sed -i 's/flutter.targetSdkVersion/36/g' android/app/build.gradle.kts
@@ -55,6 +53,16 @@ jobs:
           fi
           
           flutter pub get
+          
+          # 💡 雷射精準打擊：直接去雲端快取資料夾，把 file_picker 等頑固套件裡的 "34" 準確改成 "36"！
+          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle" -exec sed -i 's/compileSdkVersion 34/compileSdkVersion 36/g' {} +
+          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle" -exec sed -i 's/compileSdk 34/compileSdk 36/g' {} +
+          find ~/.pub-cache/hosted/pub.dev/ -name "build.gradle" -exec sed -i 's/compileSdk = 34/compileSdk = 36/g' {} +
+          
+          # 關閉 AGP 9+ 的語法衝突
+          echo "android.newDsl=false" >> android/gradle.properties
+          
+          # 使用 release 模式產出最終版 APK
           flutter build apk --release
 
       - name: Upload APK
